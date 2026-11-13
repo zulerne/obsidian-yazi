@@ -1,0 +1,10 @@
+{
+	"id": "yazi-fm",
+	"name": "Yazi FM",
+	"version": "0.1.0",
+	"minAppVersion": "1.8.7",
+	"description": "Keyboard-driven file manager that behaves like Yazi and reads your Yazi keymap.toml and yazi.toml.",
+	"author": "zulerne",
+	"isDesktopOnly": true,
+	"authorUrl": "https://github.com/zulerne"
+}
