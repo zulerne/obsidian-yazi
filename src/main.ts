@@ -1,8 +1,8 @@
-import { Notice, Plugin, TFile, WorkspaceLeaf } from "obsidian";
+import { FileSystemAdapter, Notice, Plugin, TFile, WorkspaceLeaf } from "obsidian";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { ParsedConfig, parseConfig } from "./config";
+import { ParsedConfig, hideBindings, parseConfig, parseKeyList } from "./config";
 import { DEFAULT_SETTINGS, Location, YaziSettings, YaziSettingTab } from "./settings";
 import { VIEW_TYPE, YaziView } from "./view";
 
@@ -76,7 +76,12 @@ export default class YaziPlugin extends Plugin {
 			keymap = files.keymap ?? "";
 			yazi = files.yazi ?? "";
 		}
-		this.config = parseConfig(keymap, yazi);
+		const adapter = this.app.vault.adapter;
+		this.config = hideBindings(parseConfig(keymap, yazi, this.settings.obsidianKeymap), {
+			vaultBase: this.settings.hideOutsideVault && adapter instanceof FileSystemAdapter ? adapter.getBasePath() : null,
+			home: os.homedir(),
+			ignored: parseKeyList(this.settings.ignoredKeys),
+		});
 		if (this.config.errors.length) console.warn("[yazi-fm] config errors:", this.config.errors);
 		this.refreshViews();
 	}

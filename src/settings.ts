@@ -19,6 +19,12 @@ export interface YaziSettings {
 	yaziDir: string;
 	keymapToml: string;
 	yaziToml: string;
+	/** Yazi-format keymap applied only in Obsidian, on top of keymap.toml. */
+	obsidianKeymap: string;
+	/** Key sequences to drop from the Yazi keymap, e.g. "g v, g r". */
+	ignoredKeys: string;
+	/** Hide `cd` bindings whose path is outside the vault. */
+	hideOutsideVault: boolean;
 }
 
 export const DEFAULT_SETTINGS: YaziSettings = {
@@ -33,6 +39,9 @@ export const DEFAULT_SETTINGS: YaziSettings = {
 	yaziDir: "~/.config/yazi",
 	keymapToml: "",
 	yaziToml: "",
+	ignoredKeys: "",
+	obsidianKeymap: "",
+	hideOutsideVault: true,
 };
 
 export class YaziSettingTab extends PluginSettingTab {
@@ -196,15 +205,57 @@ export class YaziSettingTab extends PluginSettingTab {
 			});
 		}
 
+		this.textArea(
+			containerEl,
+			"Obsidian-only keymap",
+			s.obsidianKeymap,
+			async (v) => {
+				s.obsidianKeymap = v;
+				await save(true);
+			},
+			"Same format as keymap.toml ([[mgr.prepend_keymap]] / [[mgr.append_keymap]]). Applied on top of your Yazi keymap, only in Obsidian.",
+			6,
+		);
+
+		new Setting(containerEl)
+			.setName("Hide paths outside the vault")
+			.setDesc("Drop cd bindings (such as g d → ~/Downloads) that point outside the vault.")
+			.addToggle((t) =>
+				t.setValue(s.hideOutsideVault).onChange(async (v) => {
+					s.hideOutsideVault = v;
+					await save(true);
+				}),
+			);
+
+		new Setting(containerEl)
+			.setName("Ignored keys")
+			.setDesc("Key sequences from your Yazi keymap to drop in Obsidian, separated by commas, e.g. g v, g r.")
+			.addText((t) => {
+				t.setPlaceholder("g v, g r").setValue(s.ignoredKeys);
+				t.inputEl.addEventListener("blur", () => {
+					if (t.getValue() !== s.ignoredKeys) {
+						s.ignoredKeys = t.getValue();
+						void save(true);
+					}
+				});
+			});
+
 		this.renderStatus(containerEl);
 	}
 
-	private textArea(el: HTMLElement, name: string, value: string, onSave: (v: string) => Promise<void>) {
-		const setting = new Setting(el).setName(name).setDesc("Saved when the field loses focus.");
+	private textArea(
+		el: HTMLElement,
+		name: string,
+		value: string,
+		onSave: (v: string) => Promise<void>,
+		desc = "",
+		rows = 14,
+	) {
+		const setting = new Setting(el).setName(name).setDesc(`${desc ? desc + " " : ""}Saved when the field loses focus.`);
 		setting.settingEl.addClass("yazi-setting-textarea");
 		setting.addTextArea((t) => {
 			t.setValue(value);
-			t.inputEl.rows = 14;
+			t.inputEl.rows = rows;
 			t.inputEl.spellcheck = false;
 			t.inputEl.addEventListener("blur", () => {
 				if (t.getValue() !== value) void onSave(t.getValue());
@@ -220,6 +271,12 @@ export class YaziSettingTab extends PluginSettingTab {
 			box.createEl("p", { text: "Errors:", cls: "mod-warning" });
 			const ul = box.createEl("ul");
 			for (const e of cfg.errors) ul.createEl("li", { text: e });
+		}
+		if (cfg.hidden.length) {
+			const d = box.createEl("details");
+			d.createEl("summary", { text: `${cfg.hidden.length} bindings hidden` });
+			const ul = d.createEl("ul");
+			for (const h of cfg.hidden) ul.createEl("li", { text: `${h.on.join(" ")} → ${h.run.join("; ")}  (${h.reason})` });
 		}
 		const seen = new Set<string>();
 		const unsupported: string[] = [];

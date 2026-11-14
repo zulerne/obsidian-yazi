@@ -38,8 +38,13 @@ export const DEFAULT_MGR: MgrOptions = {
 const SORTS: SortBy[] = ["none", "mtime", "btime", "extension", "alphabetical", "natural", "size", "random"];
 const LINEMODES: Linemode[] = ["none", "size", "btime", "mtime", "permissions", "owner"];
 
+export interface HiddenBinding extends Binding {
+	reason: string;
+}
+
 export interface ParsedConfig {
 	bindings: Binding[];
+	hidden: HiddenBinding[];
 	mgr: MgrOptions;
 	errors: string[];
 }
@@ -110,17 +115,73 @@ function safeParse(text: string, name: string, errors: string[]): Obj {
 	}
 }
 
-export function parseConfig(keymapToml: string, yaziToml: string): ParsedConfig {
+/** Parse "g v, g r" (comma or newline separated) into normalized key sequences. */
+export function parseKeyList(text: string): string[][] {
+	const out: string[][] = [];
+	for (const part of text.split(/[,\n]/)) {
+		const keys = part.trim().split(/\s+/).filter(Boolean);
+		if (!keys.length) continue;
+		const norm = keys.map(normalizeKey);
+		if (norm.every((k): k is string => k !== null)) out.push(norm);
+	}
+	return out;
+}
+
+export interface HideOptions {
+	/** Absolute path of the vault, or null when unknown (mobile). */
+	vaultBase: string | null;
+	home: string | null;
+	ignored: string[][];
+}
+
+/** True if `cd`/`reveal` with this path argument would leave the vault. */
+export function pathOutsideVault(raw: string, o: HideOptions): boolean {
+	let p = raw.trim();
+	if (!p || p === "~" || p === "/") return false;
+	if (p.startsWith("~/")) {
+		if (!o.home) return false;
+		p = o.home + p.slice(1);
+	}
+	if (!p.startsWith("/")) return false;
+	if (!o.vaultBase) return false;
+	return !(p === o.vaultBase || p.startsWith(o.vaultBase.replace(/\/$/, "") + "/"));
+}
+
+/** Drop bindings that cannot work in a vault (cd outside it) or that the user chose to ignore. */
+export function hideBindings(cfg: ParsedConfig, o: HideOptions): ParsedConfig {
+	const kept: Binding[] = [];
+	const hidden: HiddenBinding[] = [];
+	const same = (a: string[], b: string[]) => a.length === b.length && a.every((k, i) => k === b[i]);
+	for (const b of cfg.bindings) {
+		if (o.ignored.some((seq) => same(seq, b.on))) {
+			hidden.push({ ...b, reason: "ignored in settings" });
+			continue;
+		}
+		const outside = b.run.some((r) => {
+			const c = parseCmd(r);
+			return (c.name === "cd" || c.name === "reveal") && !c.opts.interactive && pathOutsideVault(c.args.join(" "), o);
+		});
+		if (outside) hidden.push({ ...b, reason: "path outside the vault" });
+		else kept.push(b);
+	}
+	return { ...cfg, bindings: kept, hidden };
+}
+
+export function parseConfig(keymapToml: string, yaziToml: string, obsidianKeymapToml = ""): ParsedConfig {
 	const errors: string[] = [];
+	const local = mgrSection(safeParse(obsidianKeymapToml, "Obsidian keymap", errors));
 
 	const defaults = toBindings(mgrSection(parseToml(YAZI_DEFAULT_KEYMAP) as Obj).keymap, "default keymap", errors);
 
 	const user = mgrSection(safeParse(keymapToml, "keymap.toml", errors));
 	const base = Array.isArray(user.keymap) ? toBindings(user.keymap, "keymap.toml [mgr].keymap", errors) : defaults;
 	const bindings = [
+		// Obsidian-only overrides win over everything in keymap.toml.
+		...toBindings(local.prepend_keymap, "Obsidian keymap prepend_keymap", errors),
 		...toBindings(user.prepend_keymap, "keymap.toml prepend_keymap", errors),
 		...base,
 		...toBindings(user.append_keymap, "keymap.toml append_keymap", errors),
+		...toBindings(local.append_keymap, "Obsidian keymap append_keymap", errors),
 	];
 
 	const mgr: MgrOptions = { ...DEFAULT_MGR, ratio: [...DEFAULT_MGR.ratio] };
@@ -137,7 +198,7 @@ export function parseConfig(keymapToml: string, yaziToml: string): ParsedConfig 
 	}
 	if (typeof y.scrolloff === "number") mgr.scrolloff = y.scrolloff;
 
-	return { bindings, mgr, errors };
+	return { bindings, hidden: [], mgr, errors };
 }
 
 // ---------------------------------------------------------------------------

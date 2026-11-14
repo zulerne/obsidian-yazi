@@ -737,7 +737,9 @@ export class YaziView extends ItemView {
 		else if (this.awaitChar) {
 			const cb = this.awaitChar;
 			this.awaitChar = null;
-			if (key !== "<Esc>") cb(key);
+			// The character itself matters here (e.g. a Cyrillic file name), not its key position.
+			const typed = [...evt.key].length === 1 && !evt.ctrlKey && !evt.metaKey && !evt.altKey ? evt.key : key;
+			if (key !== "<Esc>") cb(typed);
 		} else handled = this.feed(key);
 
 		const plain = !evt.metaKey && !evt.ctrlKey && !evt.altKey;
@@ -1358,7 +1360,9 @@ export class YaziView extends ItemView {
 				this.cd(t[0].path);
 				return;
 			}
-			await this.openFiles(files, "default");
+			// Obsidian extensions: open --tab / --split / --window
+			const how = c.opts.tab ? "tab" : c.opts.split ? "split" : c.opts.window ? "window" : "default";
+			await this.openFiles(files, how);
 			return;
 		}
 		if (!files.length) return;
