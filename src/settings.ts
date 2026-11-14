@@ -1,4 +1,4 @@
-import { App, Notice, PluginSettingTab, Setting } from "obsidian";
+import { App, Notice, PluginSettingTab, Setting, SettingDefinitionItem, TextAreaComponent } from "obsidian";
 import type YaziPlugin from "./main";
 import { unsupportedReason } from "./config";
 import type { KeyMode } from "./keys";
@@ -54,13 +54,267 @@ export const DEFAULT_SETTINGS: YaziSettings = {
 	hideOutsideVault: true,
 };
 
+/** Settings whose change requires re-reading the Yazi config. */
+const RELOAD_KEYS = new Set<keyof YaziSettings>([
+	"configSource",
+	"yaziDir",
+	"hideOutsideVault",
+	"ignoredKeys",
+]);
+/** Settings whose change only needs the open explorers to re-render. */
+const REFRESH_KEYS = new Set<keyof YaziSettings>(["sidebarRatio", "markdownPreview", "useIconize"]);
+
 export class YaziSettingTab extends PluginSettingTab {
+	private statusEl: HTMLElement | null = null;
+	private reloadTimer: number | null = null;
+
 	constructor(
 		app: App,
 		private plugin: YaziPlugin,
 	) {
 		super(app, plugin);
 	}
+
+	// --- Obsidian 1.13+: declarative settings (rendered and searchable by Obsidian) ---
+
+	getSettingDefinitions(): SettingDefinitionItem[] {
+		const s = () => this.plugin.settings;
+		const pluginSource = () => s().configSource === "plugin";
+		return [
+			{
+				type: "group",
+				heading: "Layout",
+				items: [
+					{
+						name: "Open the explorer in",
+						desc: "Used by the ribbon icon and the “Open” command.",
+						control: {
+							type: "dropdown",
+							key: "location",
+							options: { left: "Left sidebar", right: "Right sidebar", tab: "Main tab" },
+						},
+					},
+					{
+						name: "Replace the file explorer",
+						desc: "Show Yazi FM in place of Obsidian's file explorer in the left sidebar and close the core file explorer. Turn off to bring it back.",
+						control: { type: "toggle", key: "replaceFileExplorer" },
+					},
+					{
+						name: "Sidebar column ratio",
+						desc: "parent,current,preview in a sidebar, e.g. 0,1,0 or 1,3,2. Empty = use ratio from yazi.toml.",
+						control: {
+							type: "text",
+							key: "sidebarRatio",
+							placeholder: "yazi.toml",
+							validate: (v: string) =>
+								!v.trim() || /^\s*\d+(\.\d+)?\s*,\s*\d+(\.\d+)?\s*,\s*\d+(\.\d+)?\s*$/.test(v)
+									? undefined
+									: "Use three numbers, e.g. 0,1,0",
+						},
+					},
+					{
+						name: "Markdown preview",
+						control: {
+							type: "dropdown",
+							key: "markdownPreview",
+							options: { rendered: "Rendered", source: "Source text" },
+						},
+					},
+					{
+						name: "Use Iconize icons",
+						desc: "Show the icons and colors assigned with the Iconize plugin, when it is installed.",
+						control: { type: "toggle", key: "useIconize" },
+					},
+					{
+						name: "Start at the active file",
+						desc: "When the explorer is opened, jump to the folder of the active note and hover it.",
+						control: { type: "toggle", key: "startAtActiveFile" },
+					},
+				],
+			},
+			{
+				type: "group",
+				heading: "Opening files",
+				items: [
+					{
+						name: "Open files in",
+						desc: "“Current tab” reuses the last active editor tab (never the explorer tab itself).",
+						control: {
+							type: "dropdown",
+							key: "openIn",
+							options: { recent: "Current tab", "new-tab": "New tab" },
+						},
+					},
+					{
+						name: "Focus the file after opening",
+						desc: "Off: keyboard focus stays in the explorer.",
+						control: { type: "toggle", key: "focusFileAfterOpen" },
+					},
+					{
+						name: "Collapse the sidebar after opening a file",
+						desc: "When the explorer is in a sidebar, hide that sidebar once a file opens in Obsidian.",
+						control: { type: "toggle", key: "collapseSidebarOnOpen" },
+					},
+				],
+			},
+			{
+				type: "group",
+				heading: "Keys",
+				items: [
+					{
+						name: "Keyboard layout",
+						desc: "Auto: Latin keys as typed, other layouts by key position. Physical: always by position on a QWERTY keyboard. Typed: always the character your layout produces.",
+						control: {
+							type: "dropdown",
+							key: "keyMode",
+							options: { auto: "Auto", physical: "Physical (QWERTY positions)", typed: "Typed characters" },
+						},
+					},
+					{
+						name: "Configuration source",
+						desc: "Read keymap.toml and yazi.toml from your Yazi config folder, or from the fields below.",
+						control: {
+							type: "dropdown",
+							key: "configSource",
+							options: { "yazi-dir": "Yazi config folder", plugin: "Plugin settings" },
+						},
+					},
+					{
+						name: "Yazi config folder",
+						visible: () => !pluginSource(),
+						render: (setting) => {
+							setting.addText((t) =>
+								t.setValue(s().yaziDir).onChange(async (v) => {
+									s().yaziDir = v.trim() || DEFAULT_SETTINGS.yaziDir;
+									await this.plugin.saveSettings();
+								}),
+							);
+							setting.addButton((b) =>
+								b.setButtonText("Reload").onClick(() => {
+									this.reloadConfig();
+									new Notice("Yazi config reloaded");
+								}),
+							);
+						},
+					},
+					{
+						name: "Import from Yazi config folder",
+						desc: "Copy keymap.toml and yazi.toml from the Yazi config folder into the fields below.",
+						visible: pluginSource,
+						render: (setting) => {
+							setting.addButton((b) =>
+								b.setButtonText("Import").onClick(async () => {
+									const files = this.plugin.readYaziDir();
+									s().keymapToml = files.keymap ?? "";
+									s().yaziToml = files.yazi ?? "";
+									await this.plugin.saveSettings();
+									this.keymapArea?.setValue(s().keymapToml);
+									this.yaziArea?.setValue(s().yaziToml);
+									this.reloadConfig();
+								}),
+							);
+						},
+					},
+					{
+						name: "keymap.toml",
+						desc: "Saved when the field loses focus.",
+						visible: pluginSource,
+						render: (setting) => {
+							this.keymapArea = this.textAreaControl(setting, () => s().keymapToml, (v) => (s().keymapToml = v));
+						},
+					},
+					{
+						name: "yazi.toml",
+						desc: "Saved when the field loses focus.",
+						visible: pluginSource,
+						render: (setting) => {
+							this.yaziArea = this.textAreaControl(setting, () => s().yaziToml, (v) => (s().yaziToml = v));
+						},
+					},
+					{
+						name: "Obsidian-only keymap",
+						desc: "Same format as keymap.toml ([[mgr.prepend_keymap]] / [[mgr.append_keymap]]). Applied on top of your Yazi keymap, only in Obsidian. Saved when the field loses focus.",
+						render: (setting) => {
+							this.textAreaControl(setting, () => s().obsidianKeymap, (v) => (s().obsidianKeymap = v), 6);
+						},
+					},
+					{
+						name: "Hide paths outside the vault",
+						desc: "Drop cd bindings (such as g d → ~/Downloads) that point outside the vault.",
+						control: { type: "toggle", key: "hideOutsideVault" },
+					},
+					{
+						name: "Ignored keys",
+						desc: "Key sequences from your Yazi keymap to drop in Obsidian, separated by commas, e.g. g t, g f, w.",
+						control: { type: "text", key: "ignoredKeys", placeholder: "g t, g f, w" },
+					},
+					{
+						name: "Status",
+						searchable: false,
+						render: (setting) => {
+							this.statusEl = setting.descEl;
+							this.fillStatus(setting.descEl);
+						},
+					},
+				],
+			},
+		];
+	}
+
+	private keymapArea: TextAreaComponent | null = null;
+	private yaziArea: TextAreaComponent | null = null;
+
+	private textAreaControl(
+		setting: Setting,
+		get: () => string,
+		set: (v: string) => void,
+		rows = 14,
+	): TextAreaComponent {
+		let area!: TextAreaComponent;
+		setting.settingEl.addClass("yazi-setting-textarea");
+		setting.addTextArea((t) => {
+			area = t;
+			t.setValue(get());
+			t.inputEl.rows = rows;
+			t.inputEl.spellcheck = false;
+			t.inputEl.addEventListener("blur", () => {
+				if (t.getValue() === get()) return;
+				set(t.getValue());
+				void this.plugin.saveSettings().then(() => this.reloadConfig());
+			});
+		});
+		return area;
+	}
+
+	async setControlValue(key: string, value: unknown): Promise<void> {
+		await super.setControlValue(key, value);
+		const k = key as keyof YaziSettings;
+		const p = this.plugin;
+		if (k === "replaceFileExplorer") await p.applyFileExplorerReplacement(!value);
+		if (k === "configSource") this.refreshDomState();
+		if (RELOAD_KEYS.has(k)) this.scheduleReload();
+		if (REFRESH_KEYS.has(k)) p.refreshViews();
+	}
+
+	private scheduleReload() {
+		if (this.reloadTimer !== null) window.clearTimeout(this.reloadTimer);
+		this.reloadTimer = window.setTimeout(() => {
+			this.reloadTimer = null;
+			this.reloadConfig();
+		}, 400);
+	}
+
+	private reloadConfig() {
+		this.plugin.reloadConfig();
+		if (this.statusEl) this.fillStatus(this.statusEl);
+	}
+
+	private fillStatus(el: HTMLElement) {
+		el.empty();
+		this.renderStatus(el);
+	}
+
+	// --- Obsidian < 1.13: imperative fallback ---
 
 	display(): void {
 		const { containerEl } = this;
