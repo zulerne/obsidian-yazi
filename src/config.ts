@@ -115,7 +115,7 @@ function safeParse(text: string, name: string, errors: string[]): Obj {
 	}
 }
 
-/** Parse "g v, g r" (comma or newline separated) into normalized key sequences. */
+/** Parse "g t, g f, w" (comma or newline separated) into normalized key sequences. */
 export function parseKeyList(text: string): string[][] {
 	const out: string[][] = [];
 	for (const part of text.split(/[,\n]/)) {

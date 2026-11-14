@@ -89,8 +89,13 @@ export default class YaziPlugin extends Plugin {
 	}
 
 	async loadSettings() {
-		const saved = (await this.loadData()) as Partial<YaziSettings> | null;
+		const saved = (await this.loadData()) as (Partial<YaziSettings> & { physicalKeys?: boolean }) | null;
 		this.settings = { ...DEFAULT_SETTINGS, ...saved };
+		// 0.1.x stored a boolean "physicalKeys"; map it to keyMode.
+		if (saved && saved.keyMode === undefined && typeof saved.physicalKeys === "boolean") {
+			this.settings.keyMode = saved.physicalKeys ? "physical" : "typed";
+		}
+		delete (this.settings as { physicalKeys?: boolean }).physicalKeys;
 	}
 
 	async saveSettings() {

@@ -10,7 +10,7 @@ Yazi FM does not invent its own keymap. It ships Yazi's standard bindings and re
 - **Reads `~/.config/yazi`.** The plugin reads `keymap.toml` and these `yazi.toml [mgr]` options: `ratio`, `sort_by`, `sort_sensitive`, `sort_reverse`, `sort_dir_first`, `linemode` and `show_hidden`. You can also paste the configuration into the plugin settings instead.
 - **Yazi layout.** Parent, current and preview columns; a which-key popup for chords; a status bar; visual mode; selection and yank markers; the `mtime`/`btime`/`size` linemodes.
 - **Obsidian-only overrides.** An extra keymap in the plugin settings, in the same format, is applied on top of `keymap.toml` without touching your terminal setup. You can also hide bindings you do not need, and `cd` bindings to paths outside the vault are hidden automatically.
-- **Layout-independent keys.** Optionally, keys are matched by their physical QWERTY position, so bindings work in non-Latin keyboard layouts without aliases.
+- **Works with any keyboard layout.** By default, Latin keys are read as typed and keys from non-Latin layouts by their QWERTY position, so bindings work without aliases. You can also force physical positions or typed characters.
 - **Sidebar or tab.** Open the explorer in the left sidebar, the right sidebar or a main tab. The sidebar can use its own column ratio.
 - **Vault-aware file operations.** Renames and moves go through Obsidian, so links are updated. Deletion follows Obsidian's trash setting.
 
@@ -63,7 +63,7 @@ desc = "Copy a link to the file"
 - **Sidebar column ratio.** The parent, current and preview column widths used in a sidebar. The default is `0,1,0`. Leave it empty to use `ratio` from `yazi.toml`.
 - **Open files in.** The last active editor tab or a new tab. You can also choose whether keyboard focus moves to the opened file.
 - **Collapse the sidebar after opening a file.** Off by default. When the explorer is in a sidebar, that sidebar is hidden once a file opens in Obsidian, and the opened file gets focus.
-- **Physical key positions.** Keys are matched by their QWERTY position, so bindings work in non-Latin layouts. The character after `jump-to-char` is still read as typed, so you can jump to files with non-Latin names.
+- **Keyboard layout.** Auto (default), Physical or Typed. Auto reads Latin keys as typed and keys from non-Latin layouts by their QWERTY position. Physical always uses the QWERTY position, which also works for punctuation in non-Latin layouts. Typed always uses the character your layout produces. The character after `jump-to-char` is always read as typed, so you can jump to files with non-Latin names.
 - **Configuration source.** Read the configuration from the Yazi config folder (`~/.config/yazi` by default), or paste `keymap.toml` and `yazi.toml` into the settings.
 - **Obsidian-only keymap.** Uses the same format as `keymap.toml` and is applied on top of it, only in Obsidian. For example, this opens files in a new tab with `t`, since Yazi tabs do not exist here:
 
@@ -75,7 +75,7 @@ desc = "Copy a link to the file"
   ```
 
 - **Hide paths outside the vault.** On by default. Drops `cd` and `reveal` bindings whose path is outside the vault, such as Yazi's `g d` → `~/Downloads`.
-- **Ignored keys.** Key sequences to drop from your keymap in Obsidian, separated by commas, for example `g v, g r, g t`.
+- **Ignored keys.** Key sequences to drop from your keymap in Obsidian, separated by commas, for example `g t, g f, w` (Yazi's trash, follow-symlink and task-manager keys, which do nothing in Obsidian).
 
 The bottom of the settings page lists how many bindings are loaded, which are hidden and which are not available in Obsidian.
 

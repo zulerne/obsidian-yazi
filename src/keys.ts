@@ -108,10 +108,15 @@ export function normalizeKey(raw: string): string | null {
 }
 
 /**
- * Convert a keyboard event to Yazi notation.
- * physical = true resolves printable keys by their US-QWERTY position (layout independent).
+ * How printable keys are read:
+ * - "typed": the character the layout produces;
+ * - "physical": the US-QWERTY key at that position (layout independent);
+ * - "auto": typed for Latin characters, physical for anything else (non-Latin layouts).
  */
-export function eventToKey(evt: KeyboardEvent, physical: boolean): string | null {
+export type KeyMode = "auto" | "physical" | "typed";
+
+/** Convert a keyboard event to Yazi notation. */
+export function eventToKey(evt: KeyboardEvent, mode: KeyMode): string | null {
 	if (["Shift", "Control", "Alt", "Meta", "CapsLock", "Dead", "Process", "Unidentified"].includes(evt.key)) {
 		return null;
 	}
@@ -128,7 +133,9 @@ export function eventToKey(evt: KeyboardEvent, physical: boolean): string | null
 
 	let ch: string | null = null;
 	const code = evt.code || "";
-	const usePhysical = physical || evt.altKey || evt.ctrlKey;
+	const nonLatin = [...evt.key].length === 1 && evt.key.charCodeAt(0) > 0x7e;
+	// Alt on macOS produces special characters, so it always uses the key position.
+	const usePhysical = mode === "physical" || (mode === "auto" && nonLatin) || evt.altKey;
 	if (usePhysical) {
 		if (/^Key[A-Z]$/.test(code)) {
 			const c = code.slice(3);

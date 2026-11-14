@@ -1,6 +1,7 @@
 import { App, Notice, PluginSettingTab, Setting } from "obsidian";
 import type YaziPlugin from "./main";
 import { unsupportedReason } from "./config";
+import type { KeyMode } from "./keys";
 
 export type Location = "left" | "right" | "tab";
 export type ConfigSource = "yazi-dir" | "plugin";
@@ -14,7 +15,7 @@ export interface YaziSettings {
 	focusFileAfterOpen: boolean;
 	/** Collapse the sidebar holding the explorer after a file is opened in Obsidian. */
 	collapseSidebarOnOpen: boolean;
-	physicalKeys: boolean;
+	keyMode: KeyMode;
 	/** Column ratio used in a sidebar; empty = use yazi.toml ratio. */
 	sidebarRatio: string;
 	markdownPreview: "rendered" | "source";
@@ -25,7 +26,7 @@ export interface YaziSettings {
 	yaziToml: string;
 	/** Yazi-format keymap applied only in Obsidian, on top of keymap.toml. */
 	obsidianKeymap: string;
-	/** Key sequences to drop from the Yazi keymap, e.g. "g v, g r". */
+	/** Key sequences to drop from the Yazi keymap, e.g. "g t, g f, w". */
 	ignoredKeys: string;
 	/** Hide `cd` bindings whose path is outside the vault. */
 	hideOutsideVault: boolean;
@@ -37,7 +38,7 @@ export const DEFAULT_SETTINGS: YaziSettings = {
 	openIn: "recent",
 	focusFileAfterOpen: true,
 	collapseSidebarOnOpen: false,
-	physicalKeys: true,
+	keyMode: "auto",
 	sidebarRatio: "0,1,0",
 	markdownPreview: "rendered",
 	startAtActiveFile: true,
@@ -175,13 +176,18 @@ export class YaziSettingTab extends PluginSettingTab {
 		new Setting(containerEl).setName("Keys").setHeading();
 
 		new Setting(containerEl)
-			.setName("Physical key positions")
-			.setDesc("Read keys by their position on a QWERTY keyboard, so bindings work in the Russian layout too.")
-			.addToggle((t) =>
-				t.setValue(s.physicalKeys).onChange(async (v) => {
-					s.physicalKeys = v;
-					await save();
-				}),
+			.setName("Keyboard layout")
+			.setDesc(
+				"Auto: Latin keys as typed, other layouts by key position. Physical: always by position on a QWERTY keyboard. Typed: always the character your layout produces.",
+			)
+			.addDropdown((d) =>
+				d
+					.addOptions({ auto: "Auto", physical: "Physical (QWERTY positions)", typed: "Typed characters" })
+					.setValue(s.keyMode)
+					.onChange(async (v) => {
+						s.keyMode = v as KeyMode;
+						await save();
+					}),
 			);
 
 		new Setting(containerEl)
@@ -258,9 +264,9 @@ export class YaziSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Ignored keys")
-			.setDesc("Key sequences from your Yazi keymap to drop in Obsidian, separated by commas, e.g. g v, g r.")
+			.setDesc("Key sequences from your Yazi keymap to drop in Obsidian, separated by commas, e.g. g t, g f, w.")
 			.addText((t) => {
-				t.setPlaceholder("g v, g r").setValue(s.ignoredKeys);
+				t.setPlaceholder("g t, g f, w").setValue(s.ignoredKeys);
 				t.inputEl.addEventListener("blur", () => {
 					if (t.getValue() !== s.ignoredKeys) {
 						s.ignoredKeys = t.getValue();

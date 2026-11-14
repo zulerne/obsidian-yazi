@@ -816,14 +816,14 @@ export class YaziView extends ItemView {
 		}
 		if (activeDocument.activeElement !== this.sinkEl) return;
 
-		const key = eventToKey(evt, this.plugin.settings.physicalKeys);
+		const key = eventToKey(evt, this.plugin.settings.keyMode);
 		if (!key) return;
 		let handled = true;
 		if (this.overlay) handled = this.overlay.onKey(key);
 		else if (this.awaitChar) {
 			const cb = this.awaitChar;
 			this.awaitChar = null;
-			// The character itself matters here (e.g. a Cyrillic file name), not its key position.
+			// The character itself matters here (e.g. a non-Latin file name), not its key position.
 			const typed = [...evt.key].length === 1 && !evt.ctrlKey && !evt.metaKey && !evt.altKey ? evt.key : key;
 			if (key !== "<Esc>") cb(typed);
 		} else handled = this.feed(key);
