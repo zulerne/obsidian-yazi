@@ -79,7 +79,7 @@ The bottom of the settings page lists how many bindings are loaded, which are hi
 
 ## Installation
 
-From Obsidian (once the plugin is listed): **Settings → Community plugins → Browse**, then search for "Yazi FM".
+From Obsidian: **Settings → Community plugins → Browse**, then search for "Yazi FM", or open the [listing](https://community.obsidian.md/plugins/yazi-fm).
 
 Manually: download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/zulerne/obsidian-yazi/releases/latest) into `<vault>/.obsidian/plugins/yazi-fm/`, then enable the plugin.
 
