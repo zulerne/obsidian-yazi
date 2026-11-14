@@ -1,5 +1,9 @@
 /* Yazi FM — colors follow the active Obsidian theme. */
 
+.workspace-leaf-content .view-content.yazi-root {
+	padding: 0;
+}
+
 .yazi-root {
 	--yazi-hover-bg: var(--interactive-accent);
 	--yazi-hover-fg: var(--text-on-accent);
@@ -11,7 +15,6 @@
 	position: relative;
 	display: flex;
 	flex-direction: column;
-	padding: 0 !important;
 	overflow: hidden;
 	font-size: var(--font-ui-small);
 	user-select: none;

@@ -1,4 +1,7 @@
+import { exec, execFile, spawn } from "child_process";
+import { homedir } from "os";
 import {
+	App,
 	Component,
 	FileSystemAdapter,
 	FuzzySuggestModal,
@@ -105,7 +108,8 @@ function shellQuote(s: string): string {
 
 function fileIcon(f: TAbstractFile): string {
 	if (f instanceof TFolder) return "folder";
-	const ext = (f as TFile).extension.toLowerCase();
+	if (!(f instanceof TFile)) return "file";
+	const ext = f.extension.toLowerCase();
 	if (ext === "md") return "file-text";
 	if (IMAGE_EXT.has(ext)) return "image";
 	if (ext === "pdf") return "file-type";
@@ -115,8 +119,48 @@ function fileIcon(f: TAbstractFile): string {
 	return "file";
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const nodeRequire: (m: string) => any = (window as any).require;
+/** The parts of Electron's `shell` module this plugin uses. */
+interface ElectronShell {
+	openPath(path: string): Promise<string>;
+	showItemInFolder(path: string): void;
+}
+
+/** Undocumented but stable App internals, accessed defensively. */
+interface AppInternals {
+	commands?: { executeCommandById?(id: string): boolean };
+	viewRegistry?: { isExtensionRegistered?(ext: string): boolean };
+}
+
+function appInternals(app: App): AppInternals {
+	return app as unknown as AppInternals;
+}
+
+function childCount(f: TAbstractFile): number {
+	return f instanceof TFolder ? f.children.length : 0;
+}
+
+class JumpModal extends FuzzySuggestModal<TAbstractFile> {
+	constructor(
+		app: App,
+		private items: TAbstractFile[],
+		private onChoose: (f: TAbstractFile) => void,
+		private onDone: () => void,
+	) {
+		super(app);
+	}
+	getItems(): TAbstractFile[] {
+		return this.items;
+	}
+	getItemText(f: TAbstractFile): string {
+		return f.path;
+	}
+	onChooseItem(f: TAbstractFile): void {
+		this.onChoose(f);
+	}
+	onClose(): void {
+		this.onDone();
+	}
+}
 
 export class YaziView extends ItemView {
 	private plugin: YaziPlugin;
@@ -352,7 +396,7 @@ export class YaziView extends ItemView {
 		};
 		const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: sens ? "case" : "base" });
 		const stat = (f: TAbstractFile, k: "mtime" | "ctime" | "size") =>
-			f instanceof TFile ? f.stat[k] : k === "size" ? (f as TFolder).children.length : 0;
+			f instanceof TFile ? f.stat[k] : k === "size" ? childCount(f) : 0;
 		const ext = (f: TAbstractFile) => (f instanceof TFile ? f.extension.toLowerCase() : "");
 		if (by === "random") {
 			for (const f of list) if (!this.randomKeys.has(f.path)) this.randomKeys.set(f.path, Math.random());
@@ -575,7 +619,7 @@ export class YaziView extends ItemView {
 	private linemodeText(f: TAbstractFile): string {
 		switch (this.linemode) {
 			case "size":
-				return f instanceof TFile ? readableSize(f.stat.size) : String((f as TFolder).children.length);
+				return f instanceof TFile ? readableSize(f.stat.size) : String(childCount(f));
 			case "mtime":
 				return f instanceof TFile ? formatTime(f.stat.mtime) : "";
 			case "btime":
@@ -603,7 +647,7 @@ export class YaziView extends ItemView {
 		s.createSpan({ cls: `yazi-mode yazi-mode-${mode.toLowerCase()}`, text: mode });
 		const h = this.hovered();
 		if (h) {
-			const size = h instanceof TFile ? readableSize(h.stat.size) : String((h as TFolder).children.length);
+			const size = h instanceof TFile ? readableSize(h.stat.size) : String(childCount(h));
 			s.createSpan({ cls: "yazi-status-size", text: size });
 			s.createSpan({ cls: "yazi-status-name", text: h.name });
 		}
@@ -638,7 +682,7 @@ export class YaziView extends ItemView {
 			return;
 		}
 		const key = h
-			? `${h.path}|${h instanceof TFile ? h.stat.mtime : (h as TFolder).children.length}|${this.showHidden}|${this.sortBy}|${this.sortReverse}`
+			? `${h.path}|${h instanceof TFile ? h.stat.mtime : childCount(h)}|${this.showHidden}|${this.sortBy}|${this.sortReverse}`
 			: "";
 		if (key === this.previewKey) return;
 		this.clearPreview();
@@ -652,7 +696,8 @@ export class YaziView extends ItemView {
 			for (const f of items) this.row(list, f, f.name).dataset.path = f.path;
 			return;
 		}
-		const file = h as TFile;
+		if (!(h instanceof TFile)) return;
+		const file = h;
 		const ext = file.extension.toLowerCase();
 		if (IMAGE_EXT.has(ext)) {
 			el.createDiv({ cls: "yazi-preview-image" }).createEl("img", {
@@ -690,7 +735,8 @@ export class YaziView extends ItemView {
 	}
 
 	private onRowClick(e: MouseEvent, pane: "current" | "parent" | "preview", dbl = false) {
-		const row = (e.target as HTMLElement).closest(".yazi-row") as HTMLElement | null;
+		const t = e.targetNode;
+		const row = t?.instanceOf(HTMLElement) ? t.closest<HTMLElement>(".yazi-row") : null;
 		if (!row) return;
 		if (pane === "current") {
 			const i = Number(row.dataset.index);
@@ -910,8 +956,9 @@ export class YaziView extends ItemView {
 				return this.pluginCmd(c);
 			case "obsidian": {
 				const id = c.args[0];
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
-				if (id && !(this.app as any).commands.executeCommandById(id)) new Notice(`Yazi: unknown Obsidian command ${id}`);
+				if (id && !appInternals(this.app).commands?.executeCommandById?.(id)) {
+					new Notice(`Yazi: unknown Obsidian command ${id}`);
+				}
 				return;
 			}
 			case "tab_switch":
@@ -953,8 +1000,8 @@ export class YaziView extends ItemView {
 		const n = this.entries.length;
 		if (!n) return;
 		let c = this.cursor;
-		const rh = (this.currentEl.querySelector(".yazi-row") as HTMLElement | null)?.offsetHeight || 24;
-		const list = this.currentEl.querySelector(".yazi-list") as HTMLElement | null;
+		const rh = this.currentEl.querySelector<HTMLElement>(".yazi-row")?.offsetHeight || 24;
+		const list = this.currentEl.querySelector<HTMLElement>(".yazi-list");
 		const rows = Math.max(1, Math.floor((list?.clientHeight ?? this.currentEl.clientHeight) / rh));
 		if (step === "top") c = 0;
 		else if (step === "bot") c = n - 1;
@@ -1298,19 +1345,16 @@ export class YaziView extends ItemView {
 	// --- opening -------------------------------------------------------------
 
 	private isViewable(f: TFile): boolean {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		const reg = (this.app as any).viewRegistry;
+		const reg = appInternals(this.app).viewRegistry;
 		if (reg?.isExtensionRegistered) return reg.isExtensionRegistered(f.extension);
 		return ["md", "canvas", "pdf", ...IMAGE_EXT].includes(f.extension.toLowerCase());
 	}
 
-	private electronShell() {
+	private electronShell(): ElectronShell | null {
 		if (!Platform.isDesktopApp) return null;
-		try {
-			return nodeRequire("electron").shell;
-		} catch {
-			return null;
-		}
+		const req = (window as unknown as { require?: (m: string) => unknown }).require;
+		const mod = req?.("electron") as { shell?: ElectronShell } | undefined;
+		return mod?.shell ?? null;
 	}
 
 	private mainLeaf(): WorkspaceLeaf {
@@ -1544,7 +1588,7 @@ export class YaziView extends ItemView {
 	private resolvePath(raw: string): string | null {
 		let p = raw.trim();
 		if (!p || p === "~" || p === "/") return "";
-		const home = Platform.isDesktopApp ? (nodeRequire("os").homedir() as string) : "";
+		const home = Platform.isDesktopApp ? homedir() : "";
 		if (p.startsWith("~/") && home) p = home + p.slice(1);
 		if (p.startsWith("/")) {
 			const base = this.absPath("");
@@ -1602,18 +1646,17 @@ export class YaziView extends ItemView {
 			if (k === "h") return h ? shellQuote(this.absPath(h.path)) : "";
 			return quote(this.targets());
 		});
-		const cp = nodeRequire("child_process");
 		const env = { ...process.env, PATH: `/opt/homebrew/bin:/usr/local/bin:${process.env.PATH ?? ""}` };
 		const cwd = this.absPath(this.cwd);
 
 		// `ya emit <cmd> ...` from a shell command: expand it with the shell and run it here.
 		const emit = cmd.match(/^\s*ya\s+emit\s+([\s\S]+)$/);
 		if (emit) {
-			cp.execFile(
+			execFile(
 				"/bin/sh",
 				["-c", `printf '%s\\n' ${emit[1]}`],
 				{ cwd, env },
-				(err: Error | null, stdout: string) => {
+				(err, stdout) => {
 					if (err) {
 						new Notice(`Yazi: ${err.message}`);
 						return;
@@ -1636,10 +1679,10 @@ export class YaziView extends ItemView {
 		}
 
 		if (orphan) {
-			cp.spawn("/bin/sh", ["-c", cmd], { cwd, env, detached: true, stdio: "ignore" }).unref();
+			spawn("/bin/sh", ["-c", cmd], { cwd, env, detached: true, stdio: "ignore" }).unref();
 			return;
 		}
-		cp.exec(cmd, { cwd, env }, (err: (Error & { code?: number }) | null, stdout: string, stderr: string) => {
+		exec(cmd, { cwd, env }, (err, stdout, stderr) => {
 			if (err) new Notice(`Yazi: command failed (${err.code ?? "error"})\n${(stderr || err.message).slice(0, 400)}`);
 			else if (showOutput && stdout.trim()) new Notice(stdout.slice(0, 1000), 8000);
 		});
@@ -1722,23 +1765,10 @@ export class YaziView extends ItemView {
 			}
 		};
 		walk(base);
-		// eslint-disable-next-line @typescript-eslint/no-this-alias
-		const view = this;
-		const modal = new (class extends FuzzySuggestModal<TAbstractFile> {
-			getItems() {
-				return items;
-			}
-			getItemText(f: TAbstractFile) {
-				return f.path;
-			}
-			onChooseItem(f: TAbstractFile) {
-				if (foldersOnly && f instanceof TFolder) view.cd(f.path);
-				else view.reveal(f.path);
-			}
-			onClose() {
-				window.setTimeout(() => view.focus(), 0);
-			}
-		})(this.app);
+		const modal = new JumpModal(this.app, items, (f) => {
+			if (foldersOnly && f instanceof TFolder) this.cd(f.path);
+			else this.reveal(f.path);
+		}, () => window.setTimeout(() => this.focus(), 0));
 		modal.setPlaceholder(foldersOnly ? "Jump to a folder" : "Jump to a file or folder");
 		modal.open();
 	}
@@ -1933,7 +1963,7 @@ export class YaziView extends ItemView {
 				row("Backlinks", String(backlinks));
 			} else {
 				row("Type", "folder");
-				row("Items", String((h as TFolder).children.length));
+				row("Items", String(childCount(h)));
 			}
 			return (key) => {
 				if (["<Esc>", "<C-[>", "<C-c>", "<Tab>", "q"].includes(key)) this.closeOverlay();

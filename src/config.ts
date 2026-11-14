@@ -108,7 +108,7 @@ function mgrSection(doc: Obj): Obj {
 function safeParse(text: string, name: string, errors: string[]): Obj {
 	if (!text.trim()) return {};
 	try {
-		return parseToml(text) as Obj;
+		return parseToml(text);
 	} catch (e) {
 		errors.push(`${name}: ${(e as Error).message.split("\n")[0]}`);
 		return {};
@@ -171,7 +171,7 @@ export function parseConfig(keymapToml: string, yaziToml: string, obsidianKeymap
 	const errors: string[] = [];
 	const local = mgrSection(safeParse(obsidianKeymapToml, "Obsidian keymap", errors));
 
-	const defaults = toBindings(mgrSection(parseToml(YAZI_DEFAULT_KEYMAP) as Obj).keymap, "default keymap", errors);
+	const defaults = toBindings(mgrSection(parseToml(YAZI_DEFAULT_KEYMAP)).keymap, "default keymap", errors);
 
 	const user = mgrSection(safeParse(keymapToml, "keymap.toml", errors));
 	const base = Array.isArray(user.keymap) ? toBindings(user.keymap, "keymap.toml [mgr].keymap", errors) : defaults;
@@ -194,7 +194,8 @@ export function parseConfig(keymapToml: string, yaziToml: string, obsidianKeymap
 		mgr.linemode = y.linemode as Linemode;
 	}
 	for (const k of ["sort_sensitive", "sort_reverse", "sort_dir_first", "show_hidden"] as const) {
-		if (typeof y[k] === "boolean") mgr[k] = y[k] as boolean;
+		const v = y[k];
+		if (typeof v === "boolean") mgr[k] = v;
 	}
 	if (typeof y.scrolloff === "number") mgr.scrolloff = y.scrolloff;
 
@@ -215,14 +216,15 @@ export function parseCmd(src: string): Cmd {
 	const opts: Record<string, string | true> = {};
 	let i = 0;
 	const s = src.trim();
-	const tokens: string[] = [];
+	// literal = quoted or after `--`: never treated as an option.
+	const tokens: { text: string; literal: boolean }[] = [];
 	while (i < s.length) {
 		while (i < s.length && /\s/.test(s[i])) i++;
 		if (i >= s.length) break;
 		// `--` followed by whitespace: everything after it is one raw argument.
 		if (s.startsWith("--", i) && (i + 2 === s.length || /\s/.test(s[i + 2]))) {
 			const rest = s.slice(i + 2).trim();
-			if (rest) tokens.push("\u0000" + rest);
+			if (rest) tokens.push({ text: rest, literal: true });
 			break;
 		}
 		let tok = "";
@@ -247,11 +249,11 @@ export function parseCmd(src: string): Cmd {
 				i++;
 			}
 		}
-		tokens.push(quoted ? "\u0000" + tok : tok);
+		tokens.push({ text: tok, literal: quoted });
 	}
-	const name = (tokens.shift() ?? "").replace(/^\u0000/, "");
-	for (const t of tokens) {
-		if (t.startsWith("\u0000")) args.push(t.slice(1));
+	const name = tokens.shift()?.text ?? "";
+	for (const { text: t, literal } of tokens) {
+		if (literal) args.push(t);
 		else if (t.startsWith("--") && t.length > 2) {
 			const eq = t.indexOf("=");
 			if (eq > 0) opts[t.slice(2, eq)] = t.slice(eq + 1);
@@ -286,7 +288,7 @@ export function unsupportedReason(run: string): string | null {
 	const c = parseCmd(run);
 	if (!SUPPORTED_COMMANDS.has(c.name)) return `command "${c.name}"`;
 	if (c.name === "plugin") {
-		const p = (c.args[0] ?? "").replace(/^\u0000/, "");
+		const p = c.args[0] ?? "";
 		if (!SUPPORTED_PLUGINS.has(p)) return `plugin "${p}"`;
 	}
 	if (c.name.startsWith("tab_") && c.name !== "tab_create") return "tabs";
