@@ -286,12 +286,14 @@ export class YaziSettingTab extends PluginSettingTab {
 		return area;
 	}
 
+	// Called by the declarative settings framework (Obsidian 1.13+) when a control changes.
 	async setControlValue(key: string, value: unknown): Promise<void> {
-		await super.setControlValue(key, value);
 		const k = key as keyof YaziSettings;
 		const p = this.plugin;
+		(p.settings as unknown as Record<string, unknown>)[key] = value;
+		await p.saveSettings();
 		if (k === "replaceFileExplorer") await p.applyFileExplorerReplacement(!value);
-		if (k === "configSource") this.refreshDomState();
+		if (k === "configSource") (this as unknown as { refreshDomState?: () => void }).refreshDomState?.();
 		if (RELOAD_KEYS.has(k)) this.scheduleReload();
 		if (REFRESH_KEYS.has(k)) p.refreshViews();
 	}
