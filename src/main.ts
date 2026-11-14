@@ -172,7 +172,12 @@ export default class YaziPlugin extends Plugin {
 			created = true;
 		}
 		if (!view) return;
-		await ws.revealLeaf(view.leaf);
+		// revealLeaf() flashes the tab header, so expand the sidebar and activate the tab directly.
+		const root = view.leaf.getRoot();
+		if (root === ws.leftSplit || root === ws.rightSplit) {
+			if (root === ws.leftSplit && ws.leftSplit.collapsed) ws.leftSplit.expand();
+			if (root === ws.rightSplit && ws.rightSplit.collapsed) ws.rightSplit.expand();
+		}
 		ws.setActiveLeaf(view.leaf, { focus: true });
 		if (active instanceof TFile && (reveal || (created && this.settings.startAtActiveFile))) {
 			view.revealPath(active.path);

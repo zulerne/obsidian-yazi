@@ -325,7 +325,19 @@ export class YaziView extends ItemView {
 				if (leaf === this.leaf) this.focus();
 			}),
 		);
-		this.registerEvent(ws.on("resize", () => this.render()));
+		// Only re-render when our own size really changed (not while a sidebar is collapsed or animating).
+		let lastSize = "";
+		this.registerEvent(
+			ws.on("resize", () => {
+				const w = this.contentEl.clientWidth;
+				const h = this.contentEl.clientHeight;
+				if (!w || !h) return;
+				const size = `${w}x${h}`;
+				if (size === lastSize) return;
+				lastSize = size;
+				this.render();
+			}),
+		);
 		const v = this.app.vault;
 		this.registerEvent(v.on("create", () => this.scheduleRefresh()));
 		this.registerEvent(v.on("delete", (f) => this.onDelete(f)));

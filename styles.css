@@ -130,14 +130,6 @@
 .yazi-current .yazi-row.is-hovered .yazi-linemode {
 	color: var(--yazi-hover-fg);
 }
-.yazi-root:not(:focus-within) .yazi-current .yazi-row.is-hovered {
-	background: var(--background-modifier-active-hover);
-	color: inherit;
-}
-.yazi-root:not(:focus-within) .yazi-current .yazi-row.is-hovered .yazi-name {
-	color: inherit;
-}
-
 .yazi-empty {
 	padding: 6px 10px;
 	color: var(--text-faint);
