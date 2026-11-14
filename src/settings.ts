@@ -10,6 +10,8 @@ export interface YaziSettings {
 	/** Where files are opened: the most recent main tab, or always a new tab. */
 	openIn: "recent" | "new-tab";
 	focusFileAfterOpen: boolean;
+	/** Collapse the sidebar holding the explorer after a file is opened in Obsidian. */
+	collapseSidebarOnOpen: boolean;
 	physicalKeys: boolean;
 	/** Column ratio used in a sidebar; empty = use yazi.toml ratio. */
 	sidebarRatio: string;
@@ -31,6 +33,7 @@ export const DEFAULT_SETTINGS: YaziSettings = {
 	location: "left",
 	openIn: "recent",
 	focusFileAfterOpen: true,
+	collapseSidebarOnOpen: false,
 	physicalKeys: true,
 	sidebarRatio: "0,1,0",
 	markdownPreview: "rendered",
@@ -139,6 +142,16 @@ export class YaziSettingTab extends PluginSettingTab {
 			.addToggle((t) =>
 				t.setValue(s.focusFileAfterOpen).onChange(async (v) => {
 					s.focusFileAfterOpen = v;
+					await save();
+				}),
+			);
+
+		new Setting(containerEl)
+			.setName("Collapse the sidebar after opening a file")
+			.setDesc("When the explorer is in a sidebar, hide that sidebar once a file opens in Obsidian.")
+			.addToggle((t) =>
+				t.setValue(s.collapseSidebarOnOpen).onChange(async (v) => {
+					s.collapseSidebarOnOpen = v;
 					await save();
 				}),
 			);

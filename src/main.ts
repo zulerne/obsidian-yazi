@@ -98,20 +98,24 @@ export default class YaziPlugin extends Plugin {
 		for (const v of this.views()) v.onConfigChanged();
 	}
 
-	private leafIn(location: Location): YaziView | undefined {
+	private async leafIn(location: Location): Promise<YaziView | undefined> {
 		const ws = this.app.workspace;
-		return this.views().find((v) => {
-			const root = v.leaf.getRoot();
+		const leaf = ws.getLeavesOfType(VIEW_TYPE).find((l) => {
+			const root = l.getRoot();
 			if (location === "left") return root === ws.leftSplit;
 			if (location === "right") return root === ws.rightSplit;
 			return root === ws.rootSplit;
 		});
+		if (!leaf) return undefined;
+		// Sidebar leaves are loaded lazily; the view is a placeholder until then.
+		await leaf.loadIfDeferred();
+		return leaf.view instanceof YaziView ? leaf.view : undefined;
 	}
 
 	async open(location: Location, forceNew = false, reveal = false) {
 		const ws = this.app.workspace;
 		const active = ws.getActiveFile();
-		let view = forceNew ? undefined : this.leafIn(location);
+		let view = forceNew ? undefined : await this.leafIn(location);
 		let created = false;
 		if (!view) {
 			let leaf: WorkspaceLeaf | null;

@@ -61,6 +61,7 @@ desc = "Copy a link to the file"
 - **Open the explorer in.** Left sidebar, right sidebar or main tab. Used by the ribbon icon and the **Open** command.
 - **Sidebar column ratio.** The parent, current and preview column widths used in a sidebar. The default is `0,1,0`. Leave it empty to use `ratio` from `yazi.toml`.
 - **Open files in.** The last active editor tab or a new tab. You can also choose whether keyboard focus moves to the opened file.
+- **Collapse the sidebar after opening a file.** Off by default. When the explorer is in a sidebar, that sidebar is hidden once a file opens in Obsidian, and the opened file gets focus.
 - **Physical key positions.** Keys are matched by their QWERTY position, so bindings work in non-Latin layouts. The character after `jump-to-char` is still read as typed, so you can jump to files with non-Latin names.
 - **Configuration source.** Read the configuration from the Yazi config folder (`~/.config/yazi` by default), or paste `keymap.toml` and `yazi.toml` into the settings.
 - **Obsidian-only keymap.** Uses the same format as `keymap.toml` and is applied on top of it, only in Obsidian. For example, this opens files in a new tab with `t`, since Yazi tabs do not exist here:

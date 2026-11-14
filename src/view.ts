@@ -1391,8 +1391,19 @@ export class YaziView extends ItemView {
 			await leaf.openFile(f, { active: false });
 			lastLeaf = leaf;
 		}
+		if (lastLeaf && this.plugin.settings.collapseSidebarOnOpen && this.isSidebar()) {
+			this.collapseSidebar();
+			ws.setActiveLeaf(lastLeaf, { focus: true });
+			return;
+		}
 		if (lastLeaf && focus) ws.setActiveLeaf(lastLeaf, { focus: true });
 		else this.focus();
+	}
+
+	private collapseSidebar() {
+		const ws = this.app.workspace;
+		if (this.leaf.getRoot() === ws.leftSplit) ws.leftSplit.collapse();
+		else ws.rightSplit.collapse();
 	}
 
 	private async openCmd(c: Cmd) {
@@ -1426,9 +1437,7 @@ export class YaziView extends ItemView {
 	private async quit() {
 		const ws = this.app.workspace;
 		if (this.isSidebar()) {
-			const root = this.leaf.getRoot();
-			if (root === ws.leftSplit) ws.leftSplit.collapse();
-			else ws.rightSplit.collapse();
+			this.collapseSidebar();
 			const recent = ws.getMostRecentLeaf(ws.rootSplit);
 			if (recent) ws.setActiveLeaf(recent, { focus: true });
 		} else {
