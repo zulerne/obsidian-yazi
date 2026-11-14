@@ -85,6 +85,21 @@
 	width: 14px;
 	height: 14px;
 }
+.yazi-icon.is-iconize {
+	color: var(--yazi-icon-color, var(--text-muted));
+}
+.yazi-row.is-dir .yazi-icon.is-iconize {
+	color: var(--yazi-icon-color, var(--yazi-dir));
+}
+.yazi-icon.is-emoji {
+	width: 14px;
+	font-size: 12px;
+	line-height: 14px;
+	justify-content: center;
+}
+.yazi-current .yazi-row.is-hovered .yazi-icon.is-iconize {
+	color: var(--yazi-hover-fg);
+}
 .yazi-name {
 	flex: 1 1 auto;
 	overflow: hidden;

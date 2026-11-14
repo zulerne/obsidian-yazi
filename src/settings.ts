@@ -19,6 +19,8 @@ export interface YaziSettings {
 	/** Column ratio used in a sidebar; empty = use yazi.toml ratio. */
 	sidebarRatio: string;
 	markdownPreview: "rendered" | "source";
+	/** Show icons assigned with the Iconize plugin. */
+	useIconize: boolean;
 	startAtActiveFile: boolean;
 	configSource: ConfigSource;
 	yaziDir: string;
@@ -41,6 +43,7 @@ export const DEFAULT_SETTINGS: YaziSettings = {
 	keyMode: "auto",
 	sidebarRatio: "0,1,0",
 	markdownPreview: "rendered",
+	useIconize: true,
 	startAtActiveFile: true,
 	configSource: "yazi-dir",
 	yaziDir: "~/.config/yazi",
@@ -126,6 +129,17 @@ export class YaziSettingTab extends PluginSettingTab {
 						await save();
 						p.refreshViews();
 					}),
+			);
+
+		new Setting(containerEl)
+			.setName("Use Iconize icons")
+			.setDesc("Show the icons and colors assigned with the Iconize plugin, when it is installed.")
+			.addToggle((t) =>
+				t.setValue(s.useIconize).onChange(async (v) => {
+					s.useIconize = v;
+					await save();
+					p.refreshViews();
+				}),
 			);
 
 		new Setting(containerEl)

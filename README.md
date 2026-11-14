@@ -60,6 +60,7 @@ desc = "Copy a link to the file"
 
 - **Replace the file explorer.** Off by default. Shows Yazi FM in place of Obsidian's file explorer in the left sidebar and closes the core file explorer. If Obsidian recreates it, Yazi FM replaces it again. Turn the setting off to bring the core file explorer back.
 - **Open the explorer in.** Left sidebar, right sidebar or main tab. Used by the ribbon icon and the **Open** command.
+- **Use Iconize icons.** On by default. When the [Iconize](https://github.com/FlorianWoelki/obsidian-iconize) plugin is installed, files and folders show the icons and colors assigned there; otherwise the built-in icons are used.
 - **Sidebar column ratio.** The parent, current and preview column widths used in a sidebar. The default is `0,1,0`. Leave it empty to use `ratio` from `yazi.toml`.
 - **Open files in.** The last active editor tab or a new tab. You can also choose whether keyboard focus moves to the opened file.
 - **Collapse the sidebar after opening a file.** Off by default. When the explorer is in a sidebar, that sidebar is hidden once a file opens in Obsidian, and the opened file gets focus.

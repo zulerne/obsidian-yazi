@@ -119,6 +119,13 @@ function fileIcon(f: TAbstractFile): string {
 	return "file";
 }
 
+/** The parts of the Iconize plugin (obsidian-icon-folder) this plugin reads. */
+interface IconizePlugin {
+	getData?(): Record<string, unknown>;
+	getSettings?(): { iconColor?: unknown };
+	api?: { getIconByName?(nameWithPrefix: string): { svgElement?: string } | string | null };
+}
+
 /** The parts of Electron's `shell` module this plugin uses. */
 interface ElectronShell {
 	openPath(path: string): Promise<string>;
@@ -561,9 +568,79 @@ export class YaziView extends ItemView {
 		const el = parent.createDiv({ cls: "yazi-row" });
 		el.toggleClass("is-dir", f instanceof TFolder);
 		const icon = el.createSpan({ cls: "yazi-icon" });
-		setIcon(icon, fileIcon(f));
+		if (!this.applyIconizeIcon(icon, f.path)) setIcon(icon, fileIcon(f));
 		el.createSpan({ cls: "yazi-name", text: name });
 		return el;
+	}
+
+	// --- Iconize (obsidian-icon-folder) --------------------------------------
+
+	private iconizeSvgCache = new Map<string, SVGElement | null>();
+
+	private iconize(): IconizePlugin | null {
+		if (!this.plugin.settings.useIconize) return null;
+		const plugins = (this.app as unknown as { plugins?: { plugins?: Record<string, unknown> } }).plugins?.plugins;
+		const p = plugins?.["obsidian-icon-folder"] as IconizePlugin | undefined;
+		return p?.api?.getIconByName ? p : null;
+	}
+
+	/** Icon name and color Iconize assigned to a path, if any. */
+	private iconizeEntry(path: string): { name: string; color?: string } | null {
+		const p = this.iconize();
+		if (!p) return null;
+		const raw = p.getData?.()[path];
+		let name: string | undefined;
+		let color: string | undefined;
+		if (typeof raw === "string") name = raw;
+		else if (raw && typeof raw === "object") {
+			const o = raw as { iconName?: unknown; iconColor?: unknown };
+			if (typeof o.iconName === "string") name = o.iconName;
+			if (typeof o.iconColor === "string") color = o.iconColor;
+		}
+		if (!name) return null;
+		const fallbackColor = p.getSettings?.().iconColor;
+		return { name, color: color ?? (typeof fallbackColor === "string" ? fallbackColor : undefined) };
+	}
+
+	private iconizeSvg(name: string): SVGElement | null {
+		if (this.iconizeSvgCache.has(name)) return this.iconizeSvgCache.get(name) ?? null;
+		let svg: SVGElement | null = null;
+		try {
+			const icon = this.iconize()?.api?.getIconByName?.(name);
+			const markup = typeof icon === "object" && icon ? icon.svgElement : undefined;
+			if (markup) {
+				const doc = new DOMParser().parseFromString(markup, "image/svg+xml");
+				const root = doc.documentElement;
+				if (root.nodeName.toLowerCase() === "svg") svg = root as unknown as SVGElement;
+			}
+		} catch {
+			svg = null;
+		}
+		this.iconizeSvgCache.set(name, svg);
+		return svg;
+	}
+
+	/** Render the Iconize icon for a path into `el`. Returns false if there is none. */
+	private applyIconizeIcon(el: HTMLElement, path: string): boolean {
+		const entry = this.iconizeEntry(path);
+		if (!entry) return false;
+		if (/\p{Extended_Pictographic}/u.test(entry.name) && !/^[A-Za-z]/.test(entry.name)) {
+			el.addClass("is-emoji");
+			el.setText(entry.name);
+		} else {
+			const svg = this.iconizeSvg(entry.name);
+			if (!svg) return false;
+			el.appendChild(el.doc.importNode(svg, true));
+		}
+		el.addClass("is-iconize");
+		if (entry.color) el.setCssProps({ "--yazi-icon-color": entry.color });
+		return true;
+	}
+
+	/** Part of the row signature, so rows are rebuilt when an icon changes. */
+	private iconKey(f: TAbstractFile): string {
+		const e = this.iconizeEntry(f.path);
+		return e ? `${e.name}:${e.color ?? ""}` : "";
 	}
 
 	private parentSig = "";
@@ -574,7 +651,7 @@ export class YaziView extends ItemView {
 		const el = this.parentEl;
 		const parentPath = this.search ? this.cwd : parentOf(this.cwd);
 		const list = !this.cwd && !this.search ? [] : this.search ? [] : this.listFolder(this.getFolder(parentPath));
-		const sig = parentPath + "\n" + list.map((f) => f.path).join("\n");
+		const sig = parentPath + "\n" + list.map((f) => `${f.path}|${this.iconKey(f)}`).join("\n");
 		if (sig !== this.parentSig || !el.firstChild) {
 			this.parentSig = sig;
 			el.empty();
@@ -615,7 +692,10 @@ export class YaziView extends ItemView {
 			sig = "empty:" + (this.search?.running ? "Searching…" : this.filter || this.search ? "No matches" : "Empty");
 		} else {
 			sig = this.entries
-				.map((f) => `${f.path}|${this.displayName(f)}|${this.linemodeText(f)}|${f instanceof TFolder ? 1 : 0}`)
+				.map(
+					(f) =>
+						`${f.path}|${this.displayName(f)}|${this.linemodeText(f)}|${f instanceof TFolder ? 1 : 0}|${this.iconKey(f)}`,
+				)
 				.join("\n");
 		}
 		if (sig !== this.currentSig || !el.firstChild) {
