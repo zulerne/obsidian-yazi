@@ -1,6 +1,6 @@
 {
   "name": "yazi-fm",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "description": "Yazi-faithful keyboard file manager for Obsidian",
   "main": "main.js",
