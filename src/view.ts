@@ -61,6 +61,11 @@ function joinPath(dir: string, name: string): string {
 	return normalizePath(dir ? `${dir}/${name}` : name);
 }
 
+/** "." and ".." segments would point outside the current folder, or outside the vault. */
+function hasDotSegment(name: string): boolean {
+	return name.split("/").some((part) => part === "." || part === "..");
+}
+
 function splitExt(name: string): [string, string] {
 	const i = name.lastIndexOf(".");
 	return i > 0 ? [name.slice(0, i), name.slice(i)] : [name, ""];
@@ -75,6 +80,9 @@ function smartRegex(query: string, mode: "smart" | "insensitive" | "sensitive" =
 		return new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), flags);
 	}
 }
+
+const COLLATOR_CASE = new Intl.Collator(undefined, { numeric: true, sensitivity: "case" });
+const COLLATOR_BASE = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 
 function matchMode(c: Cmd): "smart" | "insensitive" | "sensitive" {
 	return c.opts.smart ? "smart" : c.opts.insensitive ? "insensitive" : "sensitive";
@@ -222,6 +230,12 @@ export class YaziView extends ItemView {
 	private previewTimer: number | null = null;
 	private refreshTimer: number | null = null;
 	private initialized = false;
+	/** Set by refresh(): the listings may have changed and their rows must be checked. */
+	private listDirty = true;
+	private parentDirty = true;
+	/** Row decorations last painted: cursor index and a key of everything else that colours rows. */
+	private paintedCursor = -1;
+	private paintedDecor = "";
 
 	constructor(leaf: WorkspaceLeaf, plugin: YaziPlugin) {
 		super(leaf);
@@ -351,8 +365,12 @@ export class YaziView extends ItemView {
 		this.registerEvent(v.on("rename", (f, old) => this.onRename(f, old)));
 		this.registerEvent(
 			v.on("modify", (f) => {
-				if (f === this.hovered()) this.previewKey = "";
-				this.scheduleRefresh();
+				if (f === this.hovered()) {
+					this.previewKey = "";
+					this.schedulePreview();
+					this.renderStatus();
+				}
+				if (this.modifyAffectsListing(f)) this.scheduleRefresh();
 			}),
 		);
 
@@ -361,6 +379,9 @@ export class YaziView extends ItemView {
 	}
 
 	async onClose() {
+		if (this.refreshTimer !== null) window.clearTimeout(this.refreshTimer);
+		if (this.previewTimer !== null) window.clearTimeout(this.previewTimer);
+		this.refreshTimer = this.previewTimer = null;
 		this.previewComp?.unload();
 		this.previewComp = null;
 		this.searchToken++;
@@ -413,7 +434,7 @@ export class YaziView extends ItemView {
 			const y = name(b);
 			return x < y ? -1 : x > y ? 1 : 0;
 		};
-		const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: sens ? "case" : "base" });
+		const collator = sens ? COLLATOR_CASE : COLLATOR_BASE;
 		const stat = (f: TAbstractFile, k: "mtime" | "ctime" | "size") =>
 			f instanceof TFile ? f.stat[k] : k === "size" ? childCount(f) : 0;
 		const ext = (f: TAbstractFile) => (f instanceof TFile ? f.extension.toLowerCase() : "");
@@ -478,11 +499,25 @@ export class YaziView extends ItemView {
 			list = list.filter((f) => re.test(this.displayName(f)));
 		}
 		this.entries = list;
+		this.listDirty = true;
+		this.parentDirty = true;
 
 		const idx = keep ? list.findIndex((f) => f.path === keep) : -1;
 		this.cursor = idx >= 0 ? idx : Math.min(prevCursor, Math.max(0, list.length - 1));
 		if (this.visual && this.visual.start >= list.length) this.visual.start = Math.max(0, list.length - 1);
 		this.render();
+	}
+
+	/**
+	 * Saving a note changes only its stats. Re-render the listing only when they are shown or sort it,
+	 * so autosave while typing does not rebuild the explorer.
+	 */
+	private modifyAffectsListing(f: TAbstractFile): boolean {
+		const statsShown = this.linemode !== "none" || this.sortBy === "mtime" || this.sortBy === "btime" || this.sortBy === "size";
+		if (!statsShown) return false;
+		if (this.search) return this.search.results.includes(f);
+		const dir = f.parent && !f.parent.isRoot() ? f.parent.path : "";
+		return dir === this.cwd;
 	}
 
 	private scheduleRefresh() {
@@ -649,6 +684,9 @@ export class YaziView extends ItemView {
 	/** Rebuild rows only when the listing itself changes; otherwise just update classes. */
 	private renderParent() {
 		const el = this.parentEl;
+		// The parent listing only changes with cwd or the vault, both of which go through refresh().
+		if (!this.parentDirty && el.firstChild) return;
+		this.parentDirty = false;
 		const parentPath = this.search ? this.cwd : parentOf(this.cwd);
 		const list = !this.cwd && !this.search ? [] : this.search ? [] : this.listFolder(this.getFolder(parentPath));
 		const sig = parentPath + "\n" + list.map((f) => `${f.path}|${this.iconKey(f)}`).join("\n");
@@ -685,8 +723,40 @@ export class YaziView extends ItemView {
 		return this.selected.has(f.path);
 	}
 
+	/** Everything besides the cursor that decides how rows look. */
+	private decorKey(): string {
+		const range = this.visualRange();
+		return [
+			range ? `${range[0]}-${range[1]}-${this.visual?.unset ? 1 : 0}` : "",
+			[...this.selected].join("\u0001"),
+			this.yanked ? `${this.yanked.cut ? 1 : 0}${this.yanked.paths.join("\u0001")}` : "",
+			this.find ? `${this.find.source}/${this.find.flags}` : "",
+		].join("\u0002");
+	}
+
+	private paintRow(listEl: HTMLElement, i: number, yanked: Set<string>) {
+		const r = listEl.children[i] as HTMLElement | undefined;
+		const f = this.entries[i];
+		if (!r || !f) return;
+		const range = this.visualRange();
+		const unset = this.visual?.unset ?? false;
+		const inRange = !!range && i >= range[0] && i <= range[1];
+		r.toggleClass("is-hovered", i === this.cursor);
+		r.toggleClass("is-selected", this.isSelectedIndex(i));
+		r.toggleClass("is-visual", inRange && !unset);
+		r.toggleClass("is-visual-unset", inRange && unset);
+		r.toggleClass("is-copied", yanked.has(f.path) && !this.yanked?.cut);
+		r.toggleClass("is-cut", yanked.has(f.path) && !!this.yanked?.cut);
+		r.toggleClass("is-found", !!this.find && this.find.test(this.displayName(f)));
+	}
+
 	private renderCurrent() {
 		const el = this.currentEl;
+		if (!this.listDirty && el.firstChild) {
+			this.paintCurrent();
+			return;
+		}
+		this.listDirty = false;
 		let sig: string;
 		if (!this.entries.length) {
 			sig = "empty:" + (this.search?.running ? "Searching…" : this.filter || this.search ? "No matches" : "Empty");
@@ -700,6 +770,7 @@ export class YaziView extends ItemView {
 		}
 		if (sig !== this.currentSig || !el.firstChild) {
 			this.currentSig = sig;
+			this.paintedCursor = -1;
 			el.empty();
 			const listEl = el.createDiv({ cls: "yazi-list" });
 			if (!this.entries.length) {
@@ -713,26 +784,27 @@ export class YaziView extends ItemView {
 				if (lm) r.createSpan({ cls: "yazi-linemode", text: lm });
 			});
 		}
+		this.paintCurrent();
+	}
+
+	/** Update row classes: only the old and new cursor rows when nothing else changed. */
+	private paintCurrent() {
 		if (!this.entries.length) return;
-		const listEl = el.firstElementChild as HTMLElement | null;
+		const listEl = this.currentEl.firstElementChild as HTMLElement | null;
 		if (!listEl) return;
 		const yanked = new Set(this.yanked?.paths ?? []);
-		const range = this.visualRange();
-		const unset = this.visual?.unset ?? false;
-		let hoveredRow: HTMLElement | null = null;
-		this.entries.forEach((f, i) => {
-			const r = listEl.children[i] as HTMLElement | undefined;
-			if (!r) return;
-			const inRange = !!range && i >= range[0] && i <= range[1];
-			r.toggleClass("is-hovered", i === this.cursor);
-			r.toggleClass("is-selected", this.isSelectedIndex(i));
-			r.toggleClass("is-visual", inRange && !unset);
-			r.toggleClass("is-visual-unset", inRange && unset);
-			r.toggleClass("is-copied", yanked.has(f.path) && !this.yanked?.cut);
-			r.toggleClass("is-cut", yanked.has(f.path) && !!this.yanked?.cut);
-			r.toggleClass("is-found", !!this.find && this.find.test(this.displayName(f)));
-			if (i === this.cursor) hoveredRow = r;
-		});
+		const decor = this.decorKey();
+		if (this.paintedCursor >= 0 && decor === this.paintedDecor) {
+			if (this.paintedCursor !== this.cursor) {
+				this.paintRow(listEl, this.paintedCursor, yanked);
+				this.paintRow(listEl, this.cursor, yanked);
+			}
+		} else {
+			for (let i = 0; i < this.entries.length; i++) this.paintRow(listEl, i, yanked);
+		}
+		this.paintedCursor = this.cursor;
+		this.paintedDecor = decor;
+		const hoveredRow = listEl.children[this.cursor] as HTMLElement | undefined;
 		if (hoveredRow) this.scrollIntoView(listEl, hoveredRow);
 	}
 
@@ -1059,6 +1131,7 @@ export class YaziView extends ItemView {
 				return this.sortCmd(c);
 			case "linemode":
 				this.linemode = (c.args[0] as Linemode) ?? "none";
+				this.listDirty = true;
 				this.render();
 				return;
 			case "copy":
@@ -1344,6 +1417,10 @@ export class YaziView extends ItemView {
 			title: c.opts.dir ? "Create (dir):" : "Create:",
 			onSubmit: async (value) => {
 				if (!value.trim()) return;
+				if (hasDotSegment(value)) {
+					new Notice("Yazi: names cannot contain . or .. as a path part");
+					return;
+				}
 				const isDir = !!c.opts.dir || value.endsWith("/");
 				const path = joinPath(this.cwd, value.replace(/\/+$/, ""));
 				const existing = this.app.vault.getAbstractFileByPath(path);
@@ -1416,6 +1493,10 @@ export class YaziView extends ItemView {
 			onSubmit: async (name) => {
 				name = name.trim();
 				if (!name || name === f.name) return;
+				if (hasDotSegment(name)) {
+					new Notice("Yazi: names cannot contain . or .. as a path part");
+					return;
+				}
 				const dir = f.parent && !f.parent.isRoot() ? f.parent.path : "";
 				const target = joinPath(dir, name);
 				const existing = this.app.vault.getAbstractFileByPath(target);
