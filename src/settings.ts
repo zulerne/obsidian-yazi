@@ -7,6 +7,8 @@ export type ConfigSource = "yazi-dir" | "plugin";
 
 export interface YaziSettings {
 	location: Location;
+	/** Put the explorer in place of Obsidian's core File explorer in the left sidebar. */
+	replaceFileExplorer: boolean;
 	/** Where files are opened: the most recent main tab, or always a new tab. */
 	openIn: "recent" | "new-tab";
 	focusFileAfterOpen: boolean;
@@ -31,6 +33,7 @@ export interface YaziSettings {
 
 export const DEFAULT_SETTINGS: YaziSettings = {
 	location: "left",
+	replaceFileExplorer: false,
 	openIn: "recent",
 	focusFileAfterOpen: true,
 	collapseSidebarOnOpen: false,
@@ -82,6 +85,19 @@ export class YaziSettingTab extends PluginSettingTab {
 						s.location = v as Location;
 						await save();
 					}),
+			);
+
+		new Setting(containerEl)
+			.setName("Replace the file explorer")
+			.setDesc(
+				"Show Yazi FM in place of Obsidian's file explorer in the left sidebar and close the core file explorer. Turn off to bring it back.",
+			)
+			.addToggle((t) =>
+				t.setValue(s.replaceFileExplorer).onChange(async (v) => {
+					s.replaceFileExplorer = v;
+					await save();
+					await p.applyFileExplorerReplacement(!v);
+				}),
 			);
 
 		new Setting(containerEl)

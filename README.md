@@ -1,8 +1,8 @@
 # Yazi FM
 
-A keyboard-driven file manager for Obsidian that behaves like [Yazi](https://github.com/sxyazi/yazi) and reads your own Yazi configuration.
+Yazi in your vault: the same default keys and behavior as [Yazi](https://github.com/sxyazi/yazi), plus your own `keymap.toml` and `yazi.toml`. Nothing new to learn.
 
-If you use Yazi in the terminal, your muscle memory and your `keymap.toml` work in your vault: the same keys, the same chords, the same `prepend_keymap` overrides.
+Yazi FM does not invent its own keymap. It ships Yazi's standard bindings and reads your Yazi config, so the keys you use in the terminal do the same thing in Obsidian: the same chords, the same `prepend_keymap` overrides, the same plugins (`smart-enter`, `jump-to-char`, `toggle-pane`…). Where Obsidian needs something different, you add it in a separate Obsidian-only keymap instead of changing your terminal setup.
 
 ## Features
 
@@ -58,6 +58,7 @@ desc = "Copy a link to the file"
 
 ## Settings
 
+- **Replace the file explorer.** Off by default. Shows Yazi FM in place of Obsidian's file explorer in the left sidebar and closes the core file explorer. If Obsidian recreates it, Yazi FM replaces it again. Turn the setting off to bring the core file explorer back.
 - **Open the explorer in.** Left sidebar, right sidebar or main tab. Used by the ribbon icon and the **Open** command.
 - **Sidebar column ratio.** The parent, current and preview column widths used in a sidebar. The default is `0,1,0`. Leave it empty to use `ratio` from `yazi.toml`.
 - **Open files in.** The last active editor tab or a new tab. You can also choose whether keyboard focus moves to the opened file.

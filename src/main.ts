@@ -17,6 +17,16 @@ export default class YaziPlugin extends Plugin {
 		this.registerView(VIEW_TYPE, (leaf) => new YaziView(leaf, this));
 		this.addSettingTab(new YaziSettingTab(this.app, this));
 
+		this.app.workspace.onLayoutReady(() => {
+			void this.applyFileExplorerReplacement();
+			// Obsidian can recreate the core file explorer (e.g. "Reveal file in navigation").
+			this.registerEvent(
+				this.app.workspace.on("layout-change", () => {
+					if (this.settings.replaceFileExplorer && !this.replacing) void this.applyFileExplorerReplacement();
+				}),
+			);
+		});
+
 		this.addRibbonIcon("folder-open", "Open Yazi", () => void this.open(this.settings.location));
 
 		this.addCommand({ id: "open", name: "Open", callback: () => void this.open(this.settings.location) });
@@ -43,6 +53,40 @@ export default class YaziPlugin extends Plugin {
 	}
 
 	onunload() {}
+
+	private replacing = false;
+
+	/**
+	 * Replace the core File explorer in the left sidebar with Yazi FM, in the same tab slot.
+	 * With restore = true, bring the core File explorer back instead.
+	 */
+	async applyFileExplorerReplacement(restore = false) {
+		const ws = this.app.workspace;
+		if (restore) {
+			if (!ws.getLeavesOfType("file-explorer").length) {
+				const leaf = ws.getLeftLeaf(false);
+				await leaf?.setViewState({ type: "file-explorer" });
+			}
+			return;
+		}
+		if (!this.settings.replaceFileExplorer || this.replacing) return;
+		const explorers = ws.getLeavesOfType("file-explorer").filter((l) => l.getRoot() === ws.leftSplit);
+		if (!explorers.length) return;
+		this.replacing = true;
+		try {
+			const target = explorers[0];
+			// Keep a single explorer in the left sidebar.
+			for (const l of ws.getLeavesOfType(VIEW_TYPE)) if (l.getRoot() === ws.leftSplit) l.detach();
+			for (const l of explorers.slice(1)) l.detach();
+			const active = ws.getActiveFile();
+			await target.setViewState({ type: VIEW_TYPE, active: false });
+			if (target.view instanceof YaziView && active instanceof TFile && this.settings.startAtActiveFile) {
+				target.view.revealPath(active.path);
+			}
+		} finally {
+			this.replacing = false;
+		}
+	}
 
 	async loadSettings() {
 		const saved = (await this.loadData()) as Partial<YaziSettings> | null;

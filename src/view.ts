@@ -554,23 +554,34 @@ export class YaziView extends ItemView {
 		return el;
 	}
 
+	private parentSig = "";
+	private currentSig = "";
+
+	/** Rebuild rows only when the listing itself changes; otherwise just update classes. */
 	private renderParent() {
 		const el = this.parentEl;
-		el.empty();
-		if (!this.cwd && !this.search) return;
 		const parentPath = this.search ? this.cwd : parentOf(this.cwd);
-		const list = this.search ? [] : this.listFolder(this.getFolder(parentPath));
-		const list_el = el.createDiv({ cls: "yazi-list" });
+		const list = !this.cwd && !this.search ? [] : this.search ? [] : this.listFolder(this.getFolder(parentPath));
+		const sig = parentPath + "\n" + list.map((f) => f.path).join("\n");
+		if (sig !== this.parentSig || !el.firstChild) {
+			this.parentSig = sig;
+			el.empty();
+			const listEl = el.createDiv({ cls: "yazi-list" });
+			list.forEach((f, i) => {
+				this.row(listEl, f, f.name).dataset.index = String(i);
+			});
+		}
+		const listEl = el.firstElementChild as HTMLElement | null;
+		if (!listEl) return;
 		let hoveredRow: HTMLElement | null = null;
 		list.forEach((f, i) => {
-			const r = this.row(list_el, f, f.name);
-			r.dataset.index = String(i);
-			if (f.path === this.cwd) {
-				r.addClass("is-hovered");
-				hoveredRow = r;
-			}
+			const r = listEl.children[i] as HTMLElement | undefined;
+			if (!r) return;
+			const on = f.path === this.cwd;
+			r.toggleClass("is-hovered", on);
+			if (on) hoveredRow = r;
 		});
-		if (hoveredRow) this.scrollIntoView(list_el, hoveredRow);
+		if (hoveredRow) this.scrollIntoView(listEl, hoveredRow);
 	}
 
 	private visualRange(): [number, number] | null {
@@ -587,33 +598,50 @@ export class YaziView extends ItemView {
 
 	private renderCurrent() {
 		const el = this.currentEl;
-		el.empty();
-		const list = el.createDiv({ cls: "yazi-list" });
+		let sig: string;
 		if (!this.entries.length) {
-			list.createDiv({
-				cls: "yazi-empty",
-				text: this.search?.running ? "Searching…" : this.filter || this.search ? "No matches" : "Empty",
-			});
-			return;
+			sig = "empty:" + (this.search?.running ? "Searching…" : this.filter || this.search ? "No matches" : "Empty");
+		} else {
+			sig = this.entries
+				.map((f) => `${f.path}|${this.displayName(f)}|${this.linemodeText(f)}|${f instanceof TFolder ? 1 : 0}`)
+				.join("\n");
 		}
+		if (sig !== this.currentSig || !el.firstChild) {
+			this.currentSig = sig;
+			el.empty();
+			const listEl = el.createDiv({ cls: "yazi-list" });
+			if (!this.entries.length) {
+				listEl.createDiv({ cls: "yazi-empty", text: sig.slice("empty:".length) });
+				return;
+			}
+			this.entries.forEach((f, i) => {
+				const r = this.row(listEl, f, this.displayName(f));
+				r.dataset.index = String(i);
+				const lm = this.linemodeText(f);
+				if (lm) r.createSpan({ cls: "yazi-linemode", text: lm });
+			});
+		}
+		if (!this.entries.length) return;
+		const listEl = el.firstElementChild as HTMLElement | null;
+		if (!listEl) return;
 		const yanked = new Set(this.yanked?.paths ?? []);
 		const range = this.visualRange();
+		const unset = this.visual?.unset ?? false;
 		let hoveredRow: HTMLElement | null = null;
 		this.entries.forEach((f, i) => {
-			const r = this.row(list, f, this.displayName(f));
-			r.dataset.index = String(i);
-			if (i === this.cursor) {
-				r.addClass("is-hovered");
-				hoveredRow = r;
-			}
-			if (this.isSelectedIndex(i)) r.addClass("is-selected");
-			if (range && i >= range[0] && i <= range[1]) r.addClass(this.visual!.unset ? "is-visual-unset" : "is-visual");
-			if (yanked.has(f.path)) r.addClass(this.yanked!.cut ? "is-cut" : "is-copied");
-			if (this.find && this.find.test(this.displayName(f))) r.addClass("is-found");
-			const lm = this.linemodeText(f);
-			if (lm) r.createSpan({ cls: "yazi-linemode", text: lm });
+			const r = listEl.children[i] as HTMLElement | undefined;
+			if (!r) return;
+			const inRange = !!range && i >= range[0] && i <= range[1];
+			r.toggleClass("is-hovered", i === this.cursor);
+			r.toggleClass("is-selected", this.isSelectedIndex(i));
+			r.toggleClass("is-visual", inRange && !unset);
+			r.toggleClass("is-visual-unset", inRange && unset);
+			r.toggleClass("is-copied", yanked.has(f.path) && !this.yanked?.cut);
+			r.toggleClass("is-cut", yanked.has(f.path) && !!this.yanked?.cut);
+			r.toggleClass("is-found", !!this.find && this.find.test(this.displayName(f)));
+			if (i === this.cursor) hoveredRow = r;
 		});
-		if (hoveredRow) this.scrollIntoView(list, hoveredRow);
+		if (hoveredRow) this.scrollIntoView(listEl, hoveredRow);
 	}
 
 	private linemodeText(f: TAbstractFile): string {
