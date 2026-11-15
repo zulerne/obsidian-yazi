@@ -34,9 +34,9 @@ Run **Yazi FM: Reload Yazi config** after you edit your Yazi config files.
 | --- | --- |
 | `open` | Opens the file in Obsidian. Files that Obsidian cannot display open in the system default app. `open --interactive` offers: new tab, split, new window, default app, reveal in Finder. |
 | `remove` | Moves files to trash according to Obsidian's "Deleted files" setting. `--permanently` deletes them. |
-| `cd`, `reveal` | Accepts paths relative to the current folder, `~` (the vault root) and absolute paths inside the vault. |
+| `cd`, `reveal` | Accepts paths relative to the current folder, `~` or `/` alone (the vault root) and absolute paths inside the vault, including `~/…` paths that lead into it. |
 | `search --via=fd` / `--via=rg` | Searches the current folder recursively by name or by content. No external tools are needed. |
-| `shell` | Desktop only. Runs in the background with `%s` (selected files) and `%h` (hovered file). A command of the form `ya emit <cmd>` runs `<cmd>` in the explorer. |
+| `shell` | Desktop only. Runs in the background through `/bin/sh` in the current folder, with `%s` (selected files) and `%h` (hovered file). A command of the form `ya emit <cmd>` runs `<cmd>` in the explorer. |
 | `plugin smart-enter`, `jump-to-char`, `toggle-pane`, `confirm-quit`, `smart-filter`, `fzf`, `zoxide` | Built-in equivalents of these Yazi plugins. `zoxide` jumps to any folder in the vault. |
 | `quit` | Collapses the sidebar or closes the explorer tab. |
 
@@ -62,6 +62,8 @@ desc = "Copy a link to the file"
 - **Open the explorer in.** Left sidebar, right sidebar or main tab. Used by the ribbon icon and the **Open** command.
 - **Use Iconize icons.** On by default. When the [Iconize](https://github.com/FlorianWoelki/obsidian-iconize) plugin is installed, files and folders show the icons and colors assigned there; otherwise the built-in icons are used.
 - **Hide excluded files.** Off by default. Files and folders listed in Obsidian's **Settings → Files and links → Excluded files** are treated like dot files: hidden until you show hidden files with `.`.
+- **Markdown preview.** Rendered (default) or the note's source text in the preview column.
+- **Start at the active file.** On by default. When the explorer opens, it goes to the folder of the active note and hovers it.
 - **Sidebar column ratio.** The parent, current and preview column widths used in a sidebar. The default is `0,1,0`. Leave it empty to use `ratio` from `yazi.toml`.
 - **Open files in.** The last active editor tab or a new tab. You can also choose whether keyboard focus moves to the opened file.
 - **Collapse the sidebar after opening a file.** Off by default. When the explorer is in a sidebar, that sidebar is hidden once a file opens in Obsidian, and the opened file gets focus.
