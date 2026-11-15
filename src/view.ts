@@ -143,6 +143,8 @@ interface ElectronShell {
 /** Undocumented but stable App internals, accessed defensively. */
 interface AppInternals {
 	commands?: { executeCommandById?(id: string): boolean };
+	/** Matches Obsidian's "Excluded files" (Settings → Files and links). */
+	metadataCache?: { isUserIgnored?(path: string): boolean };
 	viewRegistry?: { isExtensionRegistered?(ext: string): boolean };
 }
 
@@ -420,8 +422,15 @@ export class YaziView extends ItemView {
 		return this.entries[this.cursor];
 	}
 
+	/** Hidden like in Yazi: dot files, and with the setting on, Obsidian's excluded files. */
+	private isHidden(f: TAbstractFile): boolean {
+		if (f.name.startsWith(".")) return true;
+		if (!this.plugin.settings.hideExcluded) return false;
+		return appInternals(this.app).metadataCache?.isUserIgnored?.(f.path) ?? false;
+	}
+
 	private visible(list: TAbstractFile[]): TAbstractFile[] {
-		return this.showHidden ? list : list.filter((f) => !f.name.startsWith("."));
+		return this.showHidden ? list : list.filter((f) => !this.isHidden(f));
 	}
 
 	private sorted(list: TAbstractFile[]): TAbstractFile[] {
@@ -1754,7 +1763,7 @@ export class YaziView extends ItemView {
 		const all: TAbstractFile[] = [];
 		const walk = (folder: TFolder) => {
 			for (const ch of folder.children) {
-				if (!this.showHidden && ch.name.startsWith(".")) continue;
+				if (!this.showHidden && this.isHidden(ch)) continue;
 				all.push(ch);
 				if (ch instanceof TFolder) walk(ch);
 			}
@@ -1986,7 +1995,7 @@ export class YaziView extends ItemView {
 		const items: TAbstractFile[] = [];
 		const walk = (folder: TFolder) => {
 			for (const ch of folder.children) {
-				if (!this.showHidden && ch.name.startsWith(".")) continue;
+				if (!this.showHidden && this.isHidden(ch)) continue;
 				if (!foldersOnly || ch instanceof TFolder) items.push(ch);
 				if (ch instanceof TFolder) walk(ch);
 			}

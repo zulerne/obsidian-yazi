@@ -21,6 +21,8 @@ export interface YaziSettings {
 	markdownPreview: "rendered" | "source";
 	/** Show icons assigned with the Iconize plugin. */
 	useIconize: boolean;
+	/** Treat Obsidian's excluded files as hidden files. */
+	hideExcluded: boolean;
 	startAtActiveFile: boolean;
 	configSource: ConfigSource;
 	yaziDir: string;
@@ -44,6 +46,7 @@ export const DEFAULT_SETTINGS: YaziSettings = {
 	sidebarRatio: "0,1,0",
 	markdownPreview: "rendered",
 	useIconize: true,
+	hideExcluded: false,
 	startAtActiveFile: true,
 	configSource: "yazi-dir",
 	yaziDir: "~/.config/yazi",
@@ -62,7 +65,7 @@ const RELOAD_KEYS = new Set<keyof YaziSettings>([
 	"ignoredKeys",
 ]);
 /** Settings whose change only needs the open explorers to re-render. */
-const REFRESH_KEYS = new Set<keyof YaziSettings>(["sidebarRatio", "markdownPreview", "useIconize"]);
+const REFRESH_KEYS = new Set<keyof YaziSettings>(["sidebarRatio", "markdownPreview", "useIconize", "hideExcluded"]);
 
 /**
  * Save a text area shortly after typing stops and when it loses focus, so the text is kept
@@ -142,6 +145,11 @@ export class YaziSettingTab extends PluginSettingTab {
 						name: "Use Iconize icons",
 						desc: "Show the icons and colors assigned with the Iconize plugin, when it is installed.",
 						control: { type: "toggle", key: "useIconize" },
+					},
+					{
+						name: "Hide excluded files",
+						desc: "Treat the files in Obsidian's Settings → Files and links → Excluded files like dot files: hidden until you press . to show hidden files.",
+						control: { type: "toggle", key: "hideExcluded" },
 					},
 					{
 						name: "Start at the active file",
@@ -409,6 +417,17 @@ export class YaziSettingTab extends PluginSettingTab {
 			.addToggle((t) =>
 				t.setValue(s.useIconize).onChange(async (v) => {
 					s.useIconize = v;
+					await save();
+					p.refreshViews();
+				}),
+			);
+
+		new Setting(containerEl)
+			.setName("Hide excluded files")
+			.setDesc("Treat the files in Obsidian's Settings → Files and links → Excluded files like dot files: hidden until you press . to show hidden files.")
+			.addToggle((t) =>
+				t.setValue(s.hideExcluded).onChange(async (v) => {
+					s.hideExcluded = v;
 					await save();
 					p.refreshViews();
 				}),
