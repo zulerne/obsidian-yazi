@@ -4,6 +4,13 @@ Yazi in your vault: the same default keys and behavior as [Yazi](https://github.
 
 Yazi FM does not invent its own keymap. It ships Yazi's standard bindings and reads your Yazi config, so the keys you use in the terminal do the same thing in Obsidian: the same chords, the same `prepend_keymap` overrides, the same plugins (`smart-enter`, `jump-to-char`, `toggle-pane`…). Where Obsidian needs something different, you add it in a separate Obsidian-only keymap instead of changing your terminal setup.
 
+## Quick start
+
+1. **Install.** **Settings → Community plugins → Browse**, search for **Yazi FM**, install and enable it (or open the [listing](https://community.obsidian.md/plugins/yazi-fm)). To install manually, download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/zulerne/obsidian-yazi/releases/latest) into `<vault>/.obsidian/plugins/yazi-fm/`. Desktop only.
+2. **Open it.** Click the folder icon in the ribbon or run **Yazi FM: Open** from the command palette. It opens in the left sidebar.
+3. **Use Yazi's keys.** `j`/`k` move, `l` enters a folder, `h` goes up, `Enter` opens a file, `Space` selects, `y`/`x`/`p` copy, cut and paste, `a` creates, `r` renames, `d` trashes. Press `~` or `F1` for the full list.
+4. **Optional.** If you use Yazi in the terminal, your `~/.config/yazi/keymap.toml` and `yazi.toml` are read automatically. To use Yazi FM instead of Obsidian's file explorer, turn on **Settings → Yazi FM → Replace the file explorer**.
+
 ## Features
 
 - **Yazi's default keymap built in.** The Yazi 26.9.1 `[mgr]` defaults are bundled verbatim. Your `keymap.toml` is layered on top exactly like Yazi does it: `prepend_keymap`, `keymap` and `append_keymap`. The first binding whose first key matches wins.
@@ -82,12 +89,6 @@ desc = "Copy a link to the file"
 - **Ignored keys.** Key sequences to drop from your keymap in Obsidian, separated by commas, for example `g t, g f, w` (Yazi's trash, follow-symlink and task-manager keys, which do nothing in Obsidian).
 
 The bottom of the settings page lists how many bindings are loaded, which are hidden and which are not available in Obsidian.
-
-## Installation
-
-From Obsidian: **Settings → Community plugins → Browse**, then search for "Yazi FM", or open the [listing](https://community.obsidian.md/plugins/yazi-fm).
-
-Manually: download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/zulerne/obsidian-yazi/releases/latest) into `<vault>/.obsidian/plugins/yazi-fm/`, then enable the plugin.
 
 ## Development
 
