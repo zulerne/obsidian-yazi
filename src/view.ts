@@ -1375,8 +1375,12 @@ export class YaziView extends ItemView {
 				if (cut) continue;
 				target = this.uniquePath(dest, f.name);
 			} else if (existing) {
-				if (force) await this.app.fileManager.trashFile(existing);
-				else target = this.uniquePath(dest, f.name);
+				if (!force) target = this.uniquePath(dest, f.name);
+				else if (f.path.startsWith(existing.path + "/")) {
+					// Replacing the folder that holds the source would trash the source with it.
+					new Notice(`Yazi: cannot replace ${existing.path} with ${f.name} from inside it`);
+					continue;
+				} else await this.app.fileManager.trashFile(existing);
 			}
 			if (cut) await this.app.fileManager.renameFile(f, target);
 			else await this.app.vault.copy(f, target);
@@ -1398,9 +1402,17 @@ export class YaziView extends ItemView {
 				: `Trash ${t.length} selected file${s}?`;
 			if (!(await this.confirm(title, t.map((f) => f.path)))) return;
 		}
+		// A file selected together with its folder (possible in search results) goes with the folder.
+		const paths = new Set(t.map((f) => f.path));
+		const insideSelected = (f: TAbstractFile) => {
+			for (let p = parentOf(f.path); p; p = parentOf(p)) if (paths.has(p)) return true;
+			return false;
+		};
 		for (const f of t) {
-			if (permanently) await this.app.vault.delete(f, true);
-			else await this.app.fileManager.trashFile(f);
+			if (!insideSelected(f)) {
+				if (permanently) await this.app.vault.delete(f, true);
+				else await this.app.fileManager.trashFile(f);
+			}
 			this.selected.delete(f.path);
 		}
 		this.refresh();
@@ -1416,7 +1428,8 @@ export class YaziView extends ItemView {
 		this.prompt({
 			title: c.opts.dir ? "Create (dir):" : "Create:",
 			onSubmit: async (value) => {
-				if (!value.trim()) return;
+				value = value.trim();
+				if (!value) return;
 				if (hasDotSegment(value)) {
 					new Notice("Yazi: names cannot contain . or .. as a path part");
 					return;
@@ -1499,6 +1512,10 @@ export class YaziView extends ItemView {
 				}
 				const dir = f.parent && !f.parent.isRoot() ? f.parent.path : "";
 				const target = joinPath(dir, name);
+				if (target.startsWith(f.path + "/")) {
+					new Notice(`Yazi: cannot move ${f.name} into itself`);
+					return;
+				}
 				const existing = this.app.vault.getAbstractFileByPath(target);
 				if (existing && existing !== f) {
 					if (!c.opts.force && !(await this.confirm("Overwrite file?", [target]))) return;

@@ -133,7 +133,8 @@ export function eventToKey(evt: KeyboardEvent, mode: KeyMode): string | null {
 
 	let ch: string | null = null;
 	const code = evt.code || "";
-	const nonLatin = [...evt.key].length === 1 && evt.key.charCodeAt(0) > 0x7e;
+	// Latin letters outside ASCII ("ö", "ñ") belong to Latin layouts and are read as typed.
+	const nonLatin = [...evt.key].length === 1 && evt.key.charCodeAt(0) > 0x7e && !/\p{Script=Latin}/u.test(evt.key);
 	// Alt on macOS produces special characters, so it always uses the key position.
 	const usePhysical = mode === "physical" || (mode === "auto" && nonLatin) || evt.altKey;
 	if (usePhysical) {

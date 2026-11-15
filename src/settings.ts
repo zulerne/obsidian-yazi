@@ -64,6 +64,24 @@ const RELOAD_KEYS = new Set<keyof YaziSettings>([
 /** Settings whose change only needs the open explorers to re-render. */
 const REFRESH_KEYS = new Set<keyof YaziSettings>(["sidebarRatio", "markdownPreview", "useIconize"]);
 
+/**
+ * Save a text area shortly after typing stops and when it loses focus, so the text is kept
+ * even if the settings close without a blur event.
+ */
+function saveOnEdit(input: HTMLTextAreaElement, save: () => void): void {
+	let timer: number | null = null;
+	const flush = () => {
+		if (timer !== null) window.clearTimeout(timer);
+		timer = null;
+		save();
+	};
+	input.addEventListener("input", () => {
+		if (timer !== null) window.clearTimeout(timer);
+		timer = window.setTimeout(flush, 600);
+	});
+	input.addEventListener("blur", flush);
+}
+
 export class YaziSettingTab extends PluginSettingTab {
 	private statusEl: HTMLElement | null = null;
 	private reloadTimer: number | null = null;
@@ -217,7 +235,6 @@ export class YaziSettingTab extends PluginSettingTab {
 					},
 					{
 						name: "keymap.toml",
-						desc: "Saved when the field loses focus.",
 						visible: pluginSource,
 						render: (setting) => {
 							this.keymapArea = this.textAreaControl(setting, () => s().keymapToml, (v) => (s().keymapToml = v));
@@ -225,7 +242,6 @@ export class YaziSettingTab extends PluginSettingTab {
 					},
 					{
 						name: "yazi.toml",
-						desc: "Saved when the field loses focus.",
 						visible: pluginSource,
 						render: (setting) => {
 							this.yaziArea = this.textAreaControl(setting, () => s().yaziToml, (v) => (s().yaziToml = v));
@@ -233,7 +249,7 @@ export class YaziSettingTab extends PluginSettingTab {
 					},
 					{
 						name: "Obsidian-only keymap",
-						desc: "Same format as keymap.toml ([[mgr.prepend_keymap]] / [[mgr.append_keymap]]). Applied on top of your Yazi keymap, only in Obsidian. Saved when the field loses focus.",
+						desc: "Same format as keymap.toml ([[mgr.prepend_keymap]] / [[mgr.append_keymap]]). Applied on top of your Yazi keymap, only in Obsidian.",
 						render: (setting) => {
 							this.textAreaControl(setting, () => s().obsidianKeymap, (v) => (s().obsidianKeymap = v), 6);
 						},
@@ -277,7 +293,7 @@ export class YaziSettingTab extends PluginSettingTab {
 			t.setValue(get());
 			t.inputEl.rows = rows;
 			t.inputEl.spellcheck = false;
-			t.inputEl.addEventListener("blur", () => {
+			saveOnEdit(t.inputEl, () => {
 				if (t.getValue() === get()) return;
 				set(t.getValue());
 				void this.plugin.saveSettings().then(() => this.reloadConfig());
@@ -556,14 +572,19 @@ export class YaziSettingTab extends PluginSettingTab {
 		desc = "",
 		rows = 14,
 	) {
-		const setting = new Setting(el).setName(name).setDesc(`${desc ? desc + " " : ""}Saved when the field loses focus.`);
+		const setting = new Setting(el).setName(name);
+		if (desc) setting.setDesc(desc);
 		setting.settingEl.addClass("yazi-setting-textarea");
 		setting.addTextArea((t) => {
 			t.setValue(value);
 			t.inputEl.rows = rows;
 			t.inputEl.spellcheck = false;
-			t.inputEl.addEventListener("blur", () => {
-				if (t.getValue() !== value) void onSave(t.getValue());
+			let saved = value;
+			saveOnEdit(t.inputEl, () => {
+				const v = t.getValue();
+				if (v === saved) return;
+				saved = v;
+				void onSave(v);
 			});
 		});
 	}
